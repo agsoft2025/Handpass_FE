@@ -4,19 +4,15 @@ import {
   Autocomplete,
   Box,
   Button,
-  Checkbox,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
-  FormControlLabel,
-  FormGroup,
   IconButton,
   Stack,
   Tab,
   Tabs,
   TextField,
-  Typography,
 } from "@mui/material";
 import { DataGrid, type GridColDef, type GridPaginationModel } from "@mui/x-data-grid";
 import { Edit, Trash } from "lucide-react";
@@ -24,12 +20,17 @@ import { useDebounce } from "../hooks/useDebounce";
 import { useDevices } from "../service/useDevice";
 import { useUsers } from "../service/useUsers";
 import {
-  useCreateUserWiegand,
+  useCreateTimeGroup,
+  useTimeGroups,
+  useUpdateTimeGroup,
+} from "../service/useTimeGroup";
+import {
   useCreateWiegandGroup,
+  useCreateUserWiegand,
   useDeleteUserWiegand,
-  useUpdateWiegandGroup,
   useUpdateUserWiegand,
   useUserWiegands,
+  useUpdateWiegandGroup,
   useWiegandGroups,
 } from "../service/useWiegandGroup";
 
@@ -101,6 +102,12 @@ const normalizeUnixSeconds = (value: unknown) => {
   return String(numeric >= 1_000_000_000_000 ? Math.floor(numeric / 1000) : Math.floor(numeric));
 };
 
+const normalizeUnixMillis = (value: unknown) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return "";
+  return String(numeric >= 1_000_000_000_000 ? Math.floor(numeric) : Math.floor(numeric * 1000));
+};
+
 const initialForm = {
   group_id: "",
   sn: "",
@@ -114,9 +121,13 @@ const initialForm = {
 const initialAssignForm = {
   sn: "",
   user_id: "",
-  group_id: "",
-  timestamp: "",
-  del_flag: false,
+  remote_group_ids: [] as string[],
+  time_group_id: "",
+};
+
+type UserOption = {
+  id: string;
+  label: string;
 };
 
 type DeviceSnOption = {
@@ -127,6 +138,12 @@ type DeviceSnOption = {
 type GroupIdOption = {
   group_id: string;
   sn: string;
+};
+
+type TimeGroupOption = {
+  time_group_id: string;
+  label: string;
+  time_configs: any[];
 };
 
 function TabPanel(props: { children?: React.ReactNode; value: number; index: number }) {
@@ -141,7 +158,12 @@ function TabPanel(props: { children?: React.ReactNode; value: number; index: num
 const WiegandGroup = () => {
   const [tabValue, setTabValue] = useState(0);
   const [open, setOpen] = useState(false);
+  const [timeOpen, setTimeOpen] = useState(false);
   const [groupsPaginationModel, setGroupsPaginationModel] = useState<GridPaginationModel>({
+    page: 0,
+    pageSize: 10,
+  });
+  const [timePaginationModel, setTimePaginationModel] = useState<GridPaginationModel>({
     page: 0,
     pageSize: 10,
   });
@@ -151,43 +173,62 @@ const WiegandGroup = () => {
   });
   const [isEditMode, setIsEditMode] = useState(false);
   const [selectedId, setSelectedId] = useState("");
+  const [isTimeEditMode, setIsTimeEditMode] = useState(false);
+  const [selectedTimeId, setSelectedTimeId] = useState("");
   const [snSearchText, setSnSearchText] = useState("");
   const [snSearchQuery, setSnSearchQuery] = useState("");
   const [assignOpen, setAssignOpen] = useState(false);
   const [assignError, setAssignError] = useState("");
   const [assignSuccess, setAssignSuccess] = useState("");
   const [isAssignEditMode, setIsAssignEditMode] = useState(false);
-  const [selectedAssignId, setSelectedAssignId] = useState("");
   const [assignSnSearchText, setAssignSnSearchText] = useState("");
   const [assignSnSearchQuery, setAssignSnSearchQuery] = useState("");
-  const [assignUserSearchText, setAssignUserSearchText] = useState("");
   const [assignForm, setAssignForm] = useState(initialAssignForm);
+  const [assignUserSearchText, setAssignUserSearchText] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [form, setForm] = useState(initialForm);
+  const [timeForm, setTimeForm] = useState({
+    time_group_id: "",
+    timestamp: "",
+    del_flag: "0",
+    start: "",
+    end: "",
+    weekdays: [] as Weekday[],
+  });
   const debouncedSnSearchQuery = useDebounce(snSearchQuery, 400);
   const debouncedAssignSnSearchQuery = useDebounce(assignSnSearchQuery, 400);
   const debouncedAssignUserSearchText = useDebounce(assignUserSearchText, 400);
   const createWiegandGroup = useCreateWiegandGroup();
   const updateWiegandGroup = useUpdateWiegandGroup();
+  const createTimeGroup = useCreateTimeGroup();
+  const updateTimeGroup = useUpdateTimeGroup();
   const createUserWiegand = useCreateUserWiegand();
-  const deleteUserWiegand = useDeleteUserWiegand();
   const updateUserWiegand = useUpdateUserWiegand();
-  const {
-    data: userWiegandsData,
-    isLoading: isUserWiegandsLoading,
-    isFetching: isUserWiegandsFetching,
-    isError: isUserWiegandsError,
-  } = useUserWiegands(true, assignPaginationModel.page + 1, assignPaginationModel.pageSize);
-  const { data, isLoading, isFetching, isError } = useWiegandGroups(
+  const deleteUserWiegand = useDeleteUserWiegand();
+  const { data, isLoading, isFetching } = useWiegandGroups(
     0,
     true,
     groupsPaginationModel.page + 1,
     groupsPaginationModel.pageSize
   );
+
+  const {
+    data: timeGroupsData,
+    isLoading: isTimeGroupsLoading,
+    isFetching: isTimeGroupsFetching,
+    isError: isTimeGroupsError,
+  } = useTimeGroups(0, true, timePaginationModel.page + 1, timePaginationModel.pageSize);
+
+  const {
+    data: assignmentsData,
+    isLoading: isAssignmentsLoading,
+    isFetching: isAssignmentsFetching,
+    isError: isAssignmentsError,
+  } = useUserWiegands(true, assignPaginationModel.page + 1, assignPaginationModel.pageSize);
   const { data: devicesData, isLoading: isDevicesLoading } = useDevices(1, debouncedSnSearchQuery);
   const { data: assignDevicesData, isLoading: isAssignDevicesLoading } = useDevices(1, debouncedAssignSnSearchQuery);
-  const { data: usersData, isLoading: isUsersLoading } = useUsers(1, 100, debouncedAssignUserSearchText);
+  const { data: usersData, isLoading: isUsersLoading } = useUsers(1, 10, debouncedAssignUserSearchText);
 
   const snOptions: DeviceSnOption[] = useMemo(() => {
     return Array.from(
@@ -227,8 +268,41 @@ const WiegandGroup = () => {
         ? data.items
         : [];
 
+  const timeList = Array.isArray(timeGroupsData)
+    ? timeGroupsData
+    : Array.isArray(timeGroupsData?.data)
+      ? timeGroupsData.data
+      : Array.isArray(timeGroupsData?.items)
+        ? timeGroupsData.items
+        : [];
+
+  const assignmentsList = Array.isArray(assignmentsData)
+    ? assignmentsData
+    : Array.isArray(assignmentsData?.data)
+      ? assignmentsData.data
+      : Array.isArray(assignmentsData?.items)
+        ? assignmentsData.items
+        : [];
+
   const groupsRowCount =
     Number((data as any)?.pagination?.total ?? (data as any)?.totalCount ?? (data as any)?.total ?? list.length) || 0;
+
+  const timeGroupsRowCount =
+    Number(
+      (timeGroupsData as any)?.pagination?.total ??
+        (timeGroupsData as any)?.totalCount ??
+        (timeGroupsData as any)?.total ??
+        timeList.length
+    ) || 0;
+
+  const assignmentsRowCount =
+    Number(
+      (assignmentsData as any)?.pagination?.total ??
+        (assignmentsData as any)?.total_records ??
+        (assignmentsData as any)?.totalCount ??
+        (assignmentsData as any)?.total ??
+        assignmentsList.length
+    ) || 0;
 
   const handleEditRow = (row: any) => {
     setError("");
@@ -255,14 +329,9 @@ const WiegandGroup = () => {
     setOpen(true);
   };
 
-  const columns: GridColDef[] = [
-    { field: "group_id", headerName: "Group ID", flex: 0.7 },
-    { field: "sn", headerName: "SN", flex: 1.5 },
-    { field: "timestamp", headerName: "Timestamp", flex: 1 },
-    { field: "del_flag", headerName: "Del Flag", flex: 0.7 },
-    { field: "start", headerName: "Start", flex: 0.8 },
-    { field: "end", headerName: "End", flex: 0.8 },
-    { field: "weekdays", headerName: "Weekdays", flex: 1.2 },
+  const remoteGroupColumns: GridColDef[] = [
+    { field: "group_id", headerName: "RemoteGroupID", flex: 0.9 },
+    { field: "sn", headerName: "Serial Number", flex: 1.6 },
     {
       field: "action",
       headerName: "Action",
@@ -270,6 +339,25 @@ const WiegandGroup = () => {
       sortable: false,
       renderCell: (params) => (
         <IconButton size="small" onClick={() => handleEditRow(params.row)}>
+          <Edit size={18} />
+        </IconButton>
+      ),
+    },
+  ];
+
+  const timeGroupColumns: GridColDef[] = [
+    { field: "time_group_id", headerName: "TimeGroupID", flex: 0.9 },
+    { field: "timestamp", headerName: "Timestamp", flex: 1 },
+    { field: "start", headerName: "Start time", flex: 0.9 },
+    { field: "end", headerName: "End time", flex: 0.9 },
+    { field: "weekdays", headerName: "Weekdays", flex: 1.2 },
+    {
+      field: "action",
+      headerName: "Action",
+      flex: 0.6,
+      sortable: false,
+      renderCell: (params) => (
+        <IconButton size="small" onClick={() => handleEditTimeRow(params.row)}>
           <Edit size={18} />
         </IconButton>
       ),
@@ -308,116 +396,173 @@ const WiegandGroup = () => {
     };
   });
 
-  const assignList = Array.isArray(userWiegandsData)
-    ? userWiegandsData
-    : Array.isArray(userWiegandsData?.data)
-      ? userWiegandsData.data
-      : Array.isArray(userWiegandsData?.items)
-        ? userWiegandsData.items
+  const timeRows = timeList.map((item: any, index: number) => {
+    const firstConfig = item?.time_configs?.[0];
+    const rawWeekdays = firstConfig?.weekdays;
+    const weekdaysArray: Weekday[] = Array.isArray(rawWeekdays)
+      ? rawWeekdays
+          .map((day: number) => Number(day))
+          .filter((day: number) => day >= 1 && day <= 7) as Weekday[]
+      : typeof rawWeekdays === "number"
+        ? bitmaskToWeekdays(rawWeekdays)
         : [];
 
-  const assignRowCount =
-    Number(
-      (userWiegandsData as any)?.pagination?.total ??
-        (userWiegandsData as any)?.totalCount ??
-        (userWiegandsData as any)?.total ??
-        assignList.length
-    ) || 0;
+    return {
+      id: item?.id ?? `${item?.time_group_id || "tg"}-${index}`,
+      api_id: item?.id ?? "",
+      time_group_id: item?.time_group_id ?? "-",
+      timestamp: item?.timestamp ?? "-",
+      del_flag: item?.del_flag ?? "0",
+      start: formatTimeForDisplay(firstConfig?.start),
+      end: formatTimeForDisplay(firstConfig?.end),
+      weekdaysRaw: rawWeekdays,
+      weekdays:
+        weekdaysArray.length > 0
+          ? weekdaysArray.map((day: number) => weekdayLabelMap[day] || String(day)).join(", ")
+          : "-",
+    };
+  });
 
   function handleEditAssignRow(row: any) {
     setAssignError("");
     setAssignSuccess("");
-    setIsAssignEditMode(true);
-    setSelectedAssignId(String(row?.api_id || row?.id || ""));
-
-    const snDisplay = String(row?.sn || "");
-    const extractedSn = snDisplay.match(/\(([^)]+)\)\s*$/)?.[1] || "";
-    const sn = String(row?.snRaw || extractedSn || "");
-    const timestampValue = normalizeUnixSeconds(row?.timestampRaw ?? row?.timestamp) || "";
+    // Aggregated row: treat Edit as "add more assignments" for this user.
+    setIsAssignEditMode(false);
 
     setAssignForm((prev) => ({
       ...prev,
-      sn,
-      user_id: String(row?.user_id ?? ""),
-      group_id: String(row?.group_id ?? ""),
-      timestamp: timestampValue,
+      sn: "",
+      user_id: String(row.user_id ?? ""),
+      remote_group_ids: [],
+      time_group_id: "",
     }));
-    setAssignSnSearchText(snDisplay || sn);
-    setAssignSnSearchQuery(sn);
-    setAssignUserSearchText(String(row?.user_id ?? ""));
+
+    setAssignSnSearchText("");
+    setAssignSnSearchQuery("");
     setAssignOpen(true);
   }
 
   async function handleDeleteAssignRow(row: any) {
-    const id = String(row?.api_id || row?.id || "");
-    if (!id) {
+    const user_id = String(row?.user_id ?? "");
+    const ids: string[] = Array.isArray(row?.assignment_ids) ? row.assignment_ids : [];
+    if (!user_id || ids.length === 0) {
       setAssignError("Invalid record selected for delete.");
       return;
     }
-    const ok = window.confirm(`Delete this assignment (${id})?`);
+    const ok = window.confirm(
+      `Delete ALL assignments for User ${user_id}? (${ids.length} records)`
+    );
     if (!ok) return;
 
     setAssignError("");
     setAssignSuccess("");
     try {
-      await deleteUserWiegand.mutateAsync(id);
-      setAssignSuccess("Deleted assignment successfully.");
+      await Promise.all(ids.map((id) => deleteUserWiegand.mutateAsync(String(id))));
+      setAssignSuccess("Deleted user assignments successfully.");
     } catch (err: any) {
-      setAssignError(err?.response?.data?.message || "Failed to delete assignment.");
+      setAssignError(err?.response?.data?.msg || err?.response?.data?.message || "Failed to delete assignment.");
     }
   }
 
   const assignColumns: GridColDef[] = [
-    // { field: "id", headerName: "ID", flex: 1.4 },
-    { field: "user_id", headerName: "User ID", flex: 0.7 },
-    { field: "group_id", headerName: "Group ID", flex: 0.8 },
-    { field: "sn", headerName: "Device", flex: 1.8 },
-    // { field: "group_uuid", headerName: "Group UUID", flex: 1.4 },
+    { field: "user_id", headerName: "UserID", flex: 0.8 },
+    { field: "remote_group_ids", headerName: "RemoteGroupID(s)", flex: 1.2 },
+    { field: "time_group_ids", headerName: "TimeGroupID(s)", flex: 1.0 },
+    { field: "sns", headerName: "Access to Device(s)", flex: 1.8 },
     { field: "timestamp", headerName: "Timestamp", flex: 1 },
-    { field: "del_flag", headerName: "Del Flag", flex: 0.8 },
     {
-           field: "actions",
-           headerName: "Actions",
-           flex: 1,
-           sortable: false,
-           renderCell: (params) => (
-             <div>
-               <Button variant="text" size="small" onClick={() => handleEditAssignRow(params.row)}>
-                 <Edit />
-               </Button>
-                <Button
-                  variant="text"
-                  color="error"
-                 size="small"
-                 onClick={() => handleDeleteAssignRow(params.row)}
-                 disabled={deleteUserWiegand.isPending}
-               >
-                 <Trash />
-               </Button>
-             </div>
-           ),
-         },
+      field: "actions",
+      headerName: "Actions",
+      flex: 0.9,
+      sortable: false,
+      renderCell: (params) => (
+        <div>
+          <Button variant="text" size="small" onClick={() => handleEditAssignRow(params.row)}>
+            <Edit />
+          </Button>
+          <Button
+            variant="text"
+            color="error"
+            size="small"
+            onClick={() => handleDeleteAssignRow(params.row)}
+            disabled={deleteUserWiegand.isPending}
+          >
+            <Trash />
+          </Button>
+        </div>
+      ),
+    },
   ];
 
-  const assignRows = assignList.map((item: any, index: number) => {
-    const apiId = item?.id ?? item?.user_wiegand_id ?? "";
-    const snRaw = String(item?.sn ?? item?.device_sn ?? item?.serial_number ?? "");
-    const deviceName = String(item?.device_name ?? item?.device?.name ?? "").trim();
-    const snDisplay = deviceName && snRaw ? `${deviceName} (${snRaw})` : deviceName || snRaw || "-";
-    const timestampRaw = item?.timestamp;
-    return {
-      id: item?.id ?? item?.user_wiegand_id ?? `${item?.user_id || "uw"}-${index}`,
-      api_id: apiId ? String(apiId) : "",
-      sn: snDisplay,
-      snRaw,
-      user_id: item?.user_id ?? "-",
-      group_uuid: item?.group_uuid ?? "-",
-      group_id: item?.group_id ?? "-",
-      timestamp: normalizeUnixSeconds(timestampRaw) || "-",
-      timestampRaw,
-      del_flag: typeof item?.del_flag === "boolean" ? (item.del_flag ? "true" : "false") : "-",
-    };
-  });
+  const assignRows = useMemo(() => {
+    const byUser = new Map<
+      string,
+      {
+        user_id: string;
+        assignment_ids: string[];
+        remote_group_ids: Set<string>;
+        time_group_ids: Set<string>;
+        sns: Set<string>;
+        latest_timestamp: number;
+      }
+    >();
+
+    for (const item of assignmentsList) {
+      const user_id = String(item?.user_id ?? "").trim();
+      if (!user_id) continue;
+
+      const id = String(item?.id ?? "").trim();
+      const groupId = String(item?.group_id ?? item?.remote_group_id ?? "").trim();
+      const timeGroupId = String(item?.time_group_id ?? "").trim();
+      const sn = String(item?.sn ?? "").trim();
+      const ts = Number(item?.timestamp ?? 0) || 0;
+
+      if (!byUser.has(user_id)) {
+        byUser.set(user_id, {
+          user_id,
+          assignment_ids: [],
+          remote_group_ids: new Set<string>(),
+          time_group_ids: new Set<string>(),
+          sns: new Set<string>(),
+          latest_timestamp: ts,
+        });
+      }
+
+      const agg = byUser.get(user_id)!;
+      if (id) agg.assignment_ids.push(id);
+      if (groupId) agg.remote_group_ids.add(groupId);
+      if (timeGroupId) agg.time_group_ids.add(timeGroupId);
+      if (sn) agg.sns.add(sn);
+      if (ts > agg.latest_timestamp) agg.latest_timestamp = ts;
+    }
+
+    return Array.from(byUser.values()).map((agg) => {
+      const remoteGroupText = Array.from(agg.remote_group_ids).sort().join(", ") || "-";
+      const timeGroupText = Array.from(agg.time_group_ids).sort().join(", ") || "-";
+      const snsText = Array.from(agg.sns).sort().join(", ") || "-";
+      return {
+        id: agg.user_id,
+        user_id: agg.user_id,
+        assignment_ids: agg.assignment_ids,
+        remote_group_ids: remoteGroupText,
+        time_group_ids: timeGroupText,
+        sns: snsText,
+        timestamp: agg.latest_timestamp || "-",
+      };
+    });
+  }, [assignmentsList]);
+
+  const userOptions: UserOption[] = useMemo(() => {
+    const raw = (usersData as any)?.data ?? [];
+    return (raw || [])
+      .filter((u: any) => u?.user_id)
+      .map((u: any) => {
+        const uid = String(u.user_id);
+        const name = String(u?.name || u?.user_name || "").trim();
+        const label = name ? `${name} (${uid})` : uid;
+        return { id: uid, label };
+      });
+  }, [usersData]);
 
   const groupOptions = Array.from(
     new Map(
@@ -427,9 +572,128 @@ const WiegandGroup = () => {
     ).values()
   ) as GroupIdOption[];
 
-  const userIdOptions = Array.from(
-    new Set((usersData?.data || []).map((user: any) => user?.user_id).filter(Boolean))
-  );
+  const timeGroupOptions: TimeGroupOption[] = useMemo(() => {
+    return timeList
+      .map((item: any) => {
+        const timeGroupId = String(item?.time_group_id ?? "");
+        if (!timeGroupId) return null;
+        const firstConfig = item?.time_configs?.[0];
+        const start = formatTimeForDisplay(firstConfig?.start);
+        const end = formatTimeForDisplay(firstConfig?.end);
+        const rawWeekdays = firstConfig?.weekdays;
+        const weekdaysArray: Weekday[] = Array.isArray(rawWeekdays)
+          ? rawWeekdays
+              .map((day: number) => Number(day))
+              .filter((day: number) => day >= 1 && day <= 7) as Weekday[]
+          : typeof rawWeekdays === "number"
+            ? bitmaskToWeekdays(rawWeekdays)
+            : [];
+        const weekdays =
+          weekdaysArray.length > 0
+            ? weekdaysArray.map((day: number) => weekdayLabelMap[day] || String(day)).join(", ")
+            : "-";
+        const ts = String(item?.timestamp ?? "-");
+        return {
+          time_group_id: timeGroupId,
+          label: `${timeGroupId} | ${start}-${end} | ${weekdays} | ${ts}`,
+          time_configs: Array.isArray(item?.time_configs) ? item.time_configs : [],
+        };
+      })
+      .filter(Boolean) as TimeGroupOption[];
+  }, [timeList]);
+
+  const handleEditTimeRow = (row: any) => {
+    setError("");
+    setSuccess("");
+    setIsTimeEditMode(true);
+    setSelectedTimeId(String(row.api_id ?? row.id ?? ""));
+    setTimeForm({
+      time_group_id: String(row.time_group_id ?? ""),
+      timestamp: normalizeUnixSeconds(row.timestamp),
+      del_flag: String(row.del_flag ?? "0"),
+      start: toTimeInputValue(row.start),
+      end: toTimeInputValue(row.end),
+      weekdays: Array.isArray(row.weekdaysRaw)
+        ? row.weekdaysRaw
+            .map((day: number) => Number(day))
+            .filter((day: number) => day >= 1 && day <= 7) as Weekday[]
+        : typeof row.weekdaysRaw === "number"
+          ? bitmaskToWeekdays(row.weekdaysRaw)
+          : [],
+    });
+    setTimeOpen(true);
+  };
+
+  const handleToggleTimeWeekday = (day: Weekday) => {
+    setTimeForm((prev) => {
+      const exists = prev.weekdays.includes(day);
+      return {
+        ...prev,
+        weekdays: exists
+          ? prev.weekdays.filter((d) => d !== day)
+          : [...prev.weekdays, day].sort((a, b) => a - b),
+      };
+    });
+  };
+
+  const handleTimeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setSuccess("");
+
+    if (timeForm.weekdays.length === 0) {
+      setError("Select at least one weekday.");
+      return;
+    }
+    if (!timeForm.time_group_id || !timeForm.timestamp || !timeForm.del_flag || !timeForm.start || !timeForm.end) {
+      setError("Please fill all fields.");
+      return;
+    }
+
+    const payload = {
+      time_group_id: timeForm.time_group_id,
+      timestamp: Number(timeForm.timestamp),
+      del_flag: Number(timeForm.del_flag),
+      time_configs: [
+        {
+          start: timeStringToSeconds(timeForm.start),
+          end: timeStringToSeconds(timeForm.end),
+          weekdays: weekdaysToBitmask(timeForm.weekdays),
+        },
+      ],
+    };
+
+    try {
+      if (isTimeEditMode) {
+        if (!selectedTimeId) {
+          setError("Invalid record selected for update.");
+          return;
+        }
+        await updateTimeGroup.mutateAsync({ id: selectedTimeId, payload });
+        setSuccess("Time group updated successfully.");
+      } else {
+        await createTimeGroup.mutateAsync(payload);
+        setSuccess("Time group created successfully.");
+      }
+
+      setTimeOpen(false);
+      setTimeForm({
+        time_group_id: "",
+        timestamp: "",
+        del_flag: "0",
+        start: "",
+        end: "",
+        weekdays: [],
+      });
+      setSelectedTimeId("");
+      setIsTimeEditMode(false);
+    } catch (err: any) {
+      setError(
+        err?.response?.data?.message ||
+          (isTimeEditMode ? "Failed to update time group." : "Failed to create time group.")
+      );
+    }
+  };
 
   const handleToggleWeekday = (day: Weekday) => {
     setForm((prev) => {
@@ -500,48 +764,35 @@ const WiegandGroup = () => {
     setAssignError("");
     setAssignSuccess("");
 
-    if (!assignForm.sn || !assignForm.user_id || !assignForm.group_id || !assignForm.timestamp) {
+    if (!assignForm.sn || !assignForm.user_id || assignForm.remote_group_ids.length === 0 || !assignForm.time_group_id) {
       setAssignError("Please fill all fields.");
       return;
     }
 
+    const now = Date.now();
+    const payloads = assignForm.remote_group_ids.map((gid) => ({
+      sn: assignForm.sn,
+      user_id: assignForm.user_id,
+      group_id: gid,
+      time_group_id: assignForm.time_group_id,
+      timestamp: now,
+      del_flag: false,
+    }));
+
     try {
-      if (isAssignEditMode) {
-        if (!selectedAssignId) {
-          setAssignError("Invalid record selected for update.");
-          return;
-        }
-        await updateUserWiegand.mutateAsync({
-          id: selectedAssignId,
-          payload: {
-            sn: assignForm.sn,
-            user_id: assignForm.user_id,
-            group_id: assignForm.group_id,
-            timestamp: Number(assignForm.timestamp),
-          },
-        });
-        setAssignSuccess("Updated assignment successfully.");
-      } else {
-        await createUserWiegand.mutateAsync({
-          sn: assignForm.sn,
-          user_id: assignForm.user_id,
-          group_id: assignForm.group_id,
-          timestamp: Number(assignForm.timestamp),
-          del_flag: assignForm.del_flag,
-        });
-        setAssignSuccess("Assigned wiegand group successfully.");
-      }
+      // Bulk create (multi remote group IDs) in one action
+      await Promise.all(payloads.map((p) => createUserWiegand.mutateAsync(p as any)));
+      setAssignSuccess("Assigned remote/time group(s) successfully.");
       setAssignOpen(false);
       setAssignForm(initialAssignForm);
       setAssignSnSearchText("");
       setAssignSnSearchQuery("");
       setAssignUserSearchText("");
       setIsAssignEditMode(false);
-      setSelectedAssignId("");
     } catch (err: any) {
       setAssignError(
         err?.response?.data?.message ||
-          (isAssignEditMode ? "Failed to update assignment." : "Failed to assign wiegand group.")
+          "Failed to assign wiegand group."
       );
     }
   };
@@ -550,29 +801,29 @@ const WiegandGroup = () => {
     <Box className="p-4">
       <Box sx={{ borderBottom: 1, borderColor: "divider", mb: 1 }}>
         <Tabs value={tabValue} onChange={(_, newValue) => setTabValue(newValue)}>
-          <Tab label="Remote/Time Group" className="text-primary! font-extrabold!" />
-          <Tab label="Assign remote Group" className="text-primary! font-extrabold!" />
+          <Tab label="Remote Group" className="text-primary! font-extrabold!" />
+          <Tab label="Time Group" className="text-primary! font-extrabold!" />
+          <Tab label="Assign Remote/Time Group" className="text-primary! font-extrabold!" />
         </Tabs>
       </Box>
 
       <TabPanel value={tabValue} index={0}>
         <div className="mb-4 flex items-center justify-end">
-          {/* <h1 className="text-primary text-4xl font-extrabold">Wiegand Group</h1> */}
           <Button
             variant="contained"
             className="!bg-primary"
-              onClick={() => {
-                setError("");
-                setSuccess("");
-                setIsEditMode(false);
-                setSelectedId("");
-                setSnSearchText("");
-                setSnSearchQuery("");
-                setForm({ ...initialForm, timestamp: String(Math.floor(Date.now() / 1000)) });
-                setOpen(true);
-              }}
-            >
-            Create remote/time group
+            onClick={() => {
+              setError("");
+              setSuccess("");
+              setIsEditMode(false);
+              setSelectedId("");
+              setSnSearchText("");
+              setSnSearchQuery("");
+              setForm({ ...initialForm, timestamp: String(Math.floor(Date.now() / 1000)) });
+              setOpen(true);
+            }}
+          >
+            Create remote group
           </Button>
         </div>
 
@@ -586,16 +837,16 @@ const WiegandGroup = () => {
             {error}
           </Alert>
         )}
-        {isError && (
+        {isTimeGroupsError && (
           <Alert severity="error" sx={{ mb: 2 }}>
-            Failed to fetch wiegand groups.
+            Failed to fetch time groups.
           </Alert>
         )}
 
         <Box sx={{ height: 560, width: "100%", mb: 2 }}>
           <DataGrid
             rows={rows}
-            columns={columns}
+            columns={remoteGroupColumns}
             loading={isLoading || isFetching}
             pagination
             paginationMode="server"
@@ -613,12 +864,17 @@ const WiegandGroup = () => {
 
         <Dialog
           open={open}
-          onClose={() => !createWiegandGroup.isPending && !updateWiegandGroup.isPending && setOpen(false)}
+          onClose={() => {
+            if (createWiegandGroup.isPending || updateWiegandGroup.isPending) return;
+            setOpen(false);
+            setIsEditMode(false);
+            setSelectedId("");
+          }}
           fullWidth
           maxWidth="sm"
         >
           <form onSubmit={handleSubmit}>
-            <DialogTitle>{isEditMode ? "Edit wiegand group" : "Create wiegand group"}</DialogTitle>
+            <DialogTitle>{isEditMode ? "Edit remote/time group" : "Create remote/time group"}</DialogTitle>
             <DialogContent>
               <Stack spacing={2} sx={{ mt: 1 }}>
                 {error && <Alert severity="error">{error}</Alert>}
@@ -634,12 +890,11 @@ const WiegandGroup = () => {
                 <Autocomplete<DeviceSnOption, false, false, true>
                   options={snOptions}
                   freeSolo
-                  value={snOptions.find((option) => option.sn === form.sn) || (form.sn ? form.sn : null)}
+                  value={snOptions.find((o) => o.sn === form.sn) || (form.sn ? form.sn : null)}
                   inputValue={snSearchText}
                   onChange={(_, value) => {
                     const selectedSn = typeof value === "string" ? value : String(value?.sn || "");
-                    const selectedLabel =
-                      typeof value === "string" ? value : String(value?.label || selectedSn);
+                    const selectedLabel = typeof value === "string" ? value : String(value?.label || selectedSn);
                     setForm((prev) => ({ ...prev, sn: selectedSn }));
                     setSnSearchText(selectedLabel);
                     setSnSearchQuery(selectedSn);
@@ -657,14 +912,7 @@ const WiegandGroup = () => {
                   }
                   loading={isDevicesLoading}
                   fullWidth
-                  renderInput={(params) => (
-                    <TextField
-                      {...params}
-                      label="SN"
-                      required
-                      fullWidth
-                    />
-                  )}
+                  renderInput={(params) => <TextField {...params} label="Serial Number" required fullWidth />}
                 />
 
                 <TextField
@@ -673,61 +921,60 @@ const WiegandGroup = () => {
                   value={form.timestamp}
                   onChange={(e) => setForm((prev) => ({ ...prev, timestamp: e.target.value }))}
                   required
-                  disabled
                   fullWidth
                 />
 
                 <TextField
-                  label="Start Time"
+                  label="Start"
                   type="time"
                   value={form.start}
                   onChange={(e) => setForm((prev) => ({ ...prev, start: e.target.value }))}
-                  InputLabelProps={{ shrink: true }}
                   required
                   fullWidth
+                  InputLabelProps={{ shrink: true }}
                 />
 
                 <TextField
-                  label="End Time"
+                  label="End"
                   type="time"
                   value={form.end}
                   onChange={(e) => setForm((prev) => ({ ...prev, end: e.target.value }))}
-                  InputLabelProps={{ shrink: true }}
                   required
                   fullWidth
+                  InputLabelProps={{ shrink: true }}
                 />
 
                 <Box>
-                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                    Weekdays
-                  </Typography>
-                  <FormGroup row>
-                    {weekdayOptions.map((day) => (
-                      <FormControlLabel
-                        key={day.value}
-                        control={
-                          <Checkbox
-                            checked={form.weekdays.includes(day.value)}
-                            onChange={() => handleToggleWeekday(day.value)}
-                          />
-                        }
-                        label={day.label}
-                      />
+                  <Box sx={{ mb: 1, fontWeight: 600 }}>Weekdays</Box>
+                  <Stack direction="row" spacing={1} flexWrap="wrap">
+                    {weekdayOptions.map((d) => (
+                      <Button
+                        key={d.value}
+                        variant={form.weekdays.includes(d.value) ? "contained" : "outlined"}
+                        size="small"
+                        onClick={() => handleToggleWeekday(d.value)}
+                      >
+                        {d.label}
+                      </Button>
                     ))}
-                  </FormGroup>
+                  </Stack>
                 </Box>
               </Stack>
             </DialogContent>
             <DialogActions>
               <Button
-                onClick={() => setOpen(false)}
+                onClick={() => {
+                  setOpen(false);
+                  setIsEditMode(false);
+                  setSelectedId("");
+                }}
                 disabled={createWiegandGroup.isPending || updateWiegandGroup.isPending}
               >
                 Cancel
               </Button>
               {!isEditMode ? (
                 <Button type="submit" variant="contained" disabled={createWiegandGroup.isPending}>
-                  {createWiegandGroup.isPending ? "Creating..." : "Create"}
+                  {createWiegandGroup.isPending ? "Saving..." : "Save"}
                 </Button>
               ) : (
                 <Button type="submit" variant="contained" disabled={updateWiegandGroup.isPending}>
@@ -741,6 +988,162 @@ const WiegandGroup = () => {
 
       <TabPanel value={tabValue} index={1}>
         <div className="mb-4 flex items-center justify-end">
+          <Button
+            variant="contained"
+            className="!bg-primary"
+            onClick={() => {
+              setError("");
+              setSuccess("");
+              setIsTimeEditMode(false);
+              setSelectedTimeId("");
+              setTimeForm({
+                time_group_id: "",
+                timestamp: String(Math.floor(Date.now() / 1000)),
+                del_flag: "0",
+                start: "",
+                end: "",
+                weekdays: [],
+              });
+              setTimeOpen(true);
+            }}
+          >
+            Create time group
+          </Button>
+        </div>
+
+        {success && (
+          <Alert severity="success" sx={{ mb: 2 }}>
+            {success}
+          </Alert>
+        )}
+        {error && !open && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {error}
+          </Alert>
+        )}
+        {isTimeGroupsError && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            Failed to fetch time groups.
+          </Alert>
+        )}
+
+        <Box sx={{ height: 560, width: "100%", mb: 2 }}>
+          <DataGrid
+            rows={timeRows}
+            columns={timeGroupColumns}
+            loading={isTimeGroupsLoading || isTimeGroupsFetching}
+            pagination
+            paginationMode="server"
+            rowCount={timeGroupsRowCount}
+            pageSizeOptions={[5, 10, 20, 50]}
+            paginationModel={timePaginationModel}
+            onPaginationModelChange={setTimePaginationModel}
+            disableRowSelectionOnClick
+            disableColumnSelector
+            sx={{
+              "& .MuiDataGrid-cell:focus": { outline: "none" },
+            }}
+          />
+        </Box>
+
+        <Dialog
+          open={timeOpen}
+          onClose={() => {
+            if (createTimeGroup.isPending || updateTimeGroup.isPending) return;
+            setTimeOpen(false);
+            setIsTimeEditMode(false);
+            setSelectedTimeId("");
+          }}
+          fullWidth
+          maxWidth="sm"
+        >
+          <form onSubmit={handleTimeSubmit}>
+            <DialogTitle>{isTimeEditMode ? "Edit time group" : "Create time group"}</DialogTitle>
+            <DialogContent>
+              <Stack spacing={2} sx={{ mt: 1 }}>
+                {error && <Alert severity="error">{error}</Alert>}
+
+                <TextField
+                  label="TimeGroupID"
+                  value={timeForm.time_group_id}
+                  onChange={(e) => setTimeForm((prev) => ({ ...prev, time_group_id: e.target.value }))}
+                  required
+                  fullWidth
+                />
+
+                <TextField
+                  label="Timestamp"
+                  type="number"
+                  value={normalizeUnixSeconds(timeForm.timestamp) ? normalizeUnixMillis(timeForm.timestamp) : timeForm.timestamp}
+                  onChange={(e) => setTimeForm((prev) => ({ ...prev, timestamp: e.target.value }))}
+                  required
+                  fullWidth
+                />
+
+                <TextField
+                  label="Start"
+                  type="time"
+                  value={timeForm.start}
+                  onChange={(e) => setTimeForm((prev) => ({ ...prev, start: e.target.value }))}
+                  required
+                  fullWidth
+                  InputLabelProps={{ shrink: true }}
+                />
+
+                <TextField
+                  label="End"
+                  type="time"
+                  value={timeForm.end}
+                  onChange={(e) => setTimeForm((prev) => ({ ...prev, end: e.target.value }))}
+                  required
+                  fullWidth
+                  InputLabelProps={{ shrink: true }}
+                />
+
+                <Box>
+                  <Box sx={{ mb: 1, fontWeight: 600 }}>Weekdays</Box>
+                  <Stack direction="row" spacing={1} flexWrap="wrap">
+                    {weekdayOptions.map((d) => (
+                      <Button
+                        key={d.value}
+                        variant={timeForm.weekdays.includes(d.value) ? "contained" : "outlined"}
+                        size="small"
+                        onClick={() => handleToggleTimeWeekday(d.value)}
+                      >
+                        {d.label}
+                      </Button>
+                    ))}
+                  </Stack>
+                </Box>
+              </Stack>
+            </DialogContent>
+            <DialogActions>
+              <Button
+                onClick={() => {
+                  setTimeOpen(false);
+                  setIsTimeEditMode(false);
+                  setSelectedTimeId("");
+                }}
+                disabled={createTimeGroup.isPending || updateTimeGroup.isPending}
+              >
+                Cancel
+              </Button>
+              {!isTimeEditMode ? (
+                <Button type="submit" variant="contained" disabled={createTimeGroup.isPending}>
+                  {createTimeGroup.isPending ? "Saving..." : "Save"}
+                </Button>
+              ) : (
+                <Button type="submit" variant="contained" disabled={updateTimeGroup.isPending}>
+                  {updateTimeGroup.isPending ? "Updating..." : "Update"}
+                </Button>
+              )}
+            </DialogActions>
+          </form>
+        </Dialog>
+      </TabPanel>
+
+      <TabPanel value={tabValue} index={2}>
+        <div className="mb-4 flex items-center justify-end">
           {/* <h1 className="text-primary text-4xl font-extrabold">Assign Wiegand Group</h1> */}
           <Button
             variant="contained"
@@ -749,19 +1152,15 @@ const WiegandGroup = () => {
               setAssignError("");
               setAssignSuccess("");
               setIsAssignEditMode(false);
-              setSelectedAssignId("");
               setAssignForm({
                 ...initialAssignForm,
-                timestamp: String(Math.floor(Date.now() / 1000)),
-                del_flag: false,
               });
               setAssignSnSearchText("");
               setAssignSnSearchQuery("");
-              setAssignUserSearchText("");
               setAssignOpen(true);
             }}
           >
-            Assign wiegand group
+            Assign remote/time group
           </Button>
         </div>
 
@@ -775,9 +1174,9 @@ const WiegandGroup = () => {
             {assignError}
           </Alert>
         )}
-        {isUserWiegandsError && (
+        {isAssignmentsError && (
           <Alert severity="error" sx={{ mb: 2 }}>
-            Failed to fetch assign wiegand groups.
+            Failed to fetch assignments.
           </Alert>
         )}
 
@@ -785,10 +1184,10 @@ const WiegandGroup = () => {
           <DataGrid
             rows={assignRows}
             columns={assignColumns}
-            loading={isUserWiegandsLoading || isUserWiegandsFetching}
+            loading={isAssignmentsLoading || isAssignmentsFetching}
             pagination
             paginationMode="server"
-            rowCount={assignRowCount}
+            rowCount={assignmentsRowCount}
             pageSizeOptions={[5, 10, 20, 50]}
             paginationModel={assignPaginationModel}
             onPaginationModelChange={setAssignPaginationModel}
@@ -806,45 +1205,79 @@ const WiegandGroup = () => {
             if (createUserWiegand.isPending || updateUserWiegand.isPending) return;
             setAssignOpen(false);
             setIsAssignEditMode(false);
-            setSelectedAssignId("");
           }}
           fullWidth
           maxWidth="sm"
         >
           <form onSubmit={handleAssignSubmit}>
-            <DialogTitle>{isAssignEditMode ? "Edit assigned wiegand group" : "Assign wiegand group"}</DialogTitle>
+            <DialogTitle>
+              {isAssignEditMode ? "Edit assigned remote/time group" : "Assign remote/time group"}
+            </DialogTitle>
             <DialogContent>
               <Stack spacing={2} sx={{ mt: 1 }}>
                 {assignError && <Alert severity="error">{assignError}</Alert>}
 
-                <Autocomplete<GroupIdOption, false, false, false>
-                  options={groupOptions}
-                  value={groupOptions.find((option) => option.group_id === assignForm.group_id) || null}
+                <Autocomplete<UserOption, false, false, false>
+                  options={userOptions}
+                  value={userOptions.find((u) => u.id === assignForm.user_id) || null}
+                  inputValue={assignUserSearchText}
+                  onInputChange={(_, value) => setAssignUserSearchText(value || "")}
                   onChange={(_, value) => {
-                    const selectedGroupId = value?.group_id || "";
-                    const selectedSn = value?.sn || "";
+                    setAssignForm((prev) => ({ ...prev, user_id: String(value?.id || "") }));
+                  }}
+                  getOptionLabel={(option) => option.label || option.id}
+                  isOptionEqualToValue={(a, b) => a.id === b.id}
+                  loading={isUsersLoading}
+                  fullWidth
+                  renderInput={(params) => <TextField {...params} label="User" required fullWidth />}
+                />
+
+                <Autocomplete<GroupIdOption, true, false, false>
+                  options={groupOptions}
+                  value={groupOptions.filter((option) => assignForm.remote_group_ids.includes(option.group_id))}
+                  onChange={(_, values) => {
+                    const selectedGroupIds = (values || []).map((v) => String(v.group_id));
+                    // Keep current SN behavior: if user picks groups tied to a device, prefill SN from first selected.
+                    const firstSn = String(values?.[0]?.sn || "");
                     setAssignForm((prev) => ({
                       ...prev,
-                      group_id: selectedGroupId,
-                      sn: selectedSn || prev.sn,
+                      remote_group_ids: selectedGroupIds,
+                      sn: firstSn || prev.sn,
                     }));
-                    if (selectedSn) {
-                      setAssignSnSearchText(selectedSn);
-                      setAssignSnSearchQuery(selectedSn);
+                    if (firstSn) {
+                      setAssignSnSearchText(firstSn);
+                      setAssignSnSearchQuery(firstSn);
                     }
                   }}
                   getOptionLabel={(option) => option.group_id || ""}
                   isOptionEqualToValue={(a, b) => a.group_id === b.group_id}
                   fullWidth
-                  renderInput={(params) => <TextField {...params} label="Group ID" required fullWidth />}
+                  renderInput={(params) => (
+                    <TextField {...params} label="Remote Group" required fullWidth />
+                  )}
+                />
+
+                <Autocomplete<TimeGroupOption, false, false, false>
+                  options={timeGroupOptions}
+                  value={timeGroupOptions.find((option) => option.time_group_id === assignForm.time_group_id) || null}
+                  onChange={(_, value) => {
+                    setAssignForm((prev) => ({
+                      ...prev,
+                      time_group_id: String(value?.time_group_id || ""),
+                    }));
+                  }}
+                  getOptionLabel={(option) => option.label || option.time_group_id}
+                  isOptionEqualToValue={(a, b) => a.time_group_id === b.time_group_id}
+                  fullWidth
+                  renderInput={(params) => (
+                    <TextField {...params} label="Time Group" required fullWidth />
+                  )}
                 />
 
                 <Autocomplete<DeviceSnOption, false, false, true>
                   options={assignSnOptions}
                   freeSolo
-                  value={
-                    assignSnOptions.find((option) => option.sn === assignForm.sn) || (assignForm.sn ? assignForm.sn : null)
-                  }
+                  value={assignSnOptions.find((option) => option.sn === assignForm.sn) || (assignForm.sn ? assignForm.sn : null)}
                   inputValue={assignSnSearchText}
                   onChange={(_, value) => {
                     const selectedSn = typeof value === "string" ? value : String(value?.sn || "");
@@ -867,49 +1300,11 @@ const WiegandGroup = () => {
                   }
                   loading={isAssignDevicesLoading}
                   fullWidth
-                  renderInput={(params) => <TextField {...params} label="SN" required fullWidth />}
+                  renderInput={(params) => (
+                    <TextField {...params} label="Access to Device" required fullWidth />
+                  )}
                 />
 
-                <Autocomplete
-                  options={userIdOptions}
-                  freeSolo
-                  value={assignForm.user_id}
-                  inputValue={assignUserSearchText}
-                  onChange={(_, value) => {
-                    const selectedUserId = String(value || "");
-                    setAssignForm((prev) => ({ ...prev, user_id: selectedUserId }));
-                    setAssignUserSearchText(selectedUserId);
-                  }}
-                  onInputChange={(_, value) => {
-                    setAssignUserSearchText(value || "");
-                    setAssignForm((prev) => ({ ...prev, user_id: value || "" }));
-                  }}
-                  loading={isUsersLoading}
-                  fullWidth
-                  renderInput={(params) => <TextField {...params} label="User ID" required fullWidth />}
-                />
-
-                <TextField
-                  label="Timestamp"
-                  type="number"
-                  value={assignForm.timestamp}
-                  onChange={(e) => setAssignForm((prev) => ({ ...prev, timestamp: e.target.value }))}
-                  disabled
-                  required
-                  fullWidth
-                />
-
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      checked={assignForm.del_flag}
-                      onChange={(e) =>
-                        setAssignForm((prev) => ({ ...prev, del_flag: e.target.checked }))
-                      }
-                    />
-                  }
-                  label="Del Flag (set true if needed)"
-                />
               </Stack>
             </DialogContent>
             <DialogActions>
@@ -917,7 +1312,6 @@ const WiegandGroup = () => {
                 onClick={() => {
                   setAssignOpen(false);
                   setIsAssignEditMode(false);
-                  setSelectedAssignId("");
                 }}
                 disabled={createUserWiegand.isPending || updateUserWiegand.isPending}
               >

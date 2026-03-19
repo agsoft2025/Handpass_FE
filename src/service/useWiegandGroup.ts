@@ -19,6 +19,7 @@ export interface CreateUserWiegandPayload {
   sn: string;
   user_id: string;
   group_id: string;
+  time_group_id: string;
   timestamp: number;
   del_flag: boolean;
 }
@@ -27,6 +28,7 @@ export interface UpdateUserWiegandPayload {
   sn: string;
   user_id: string;
   group_id: string;
+  time_group_id: string;
   timestamp: number;
 }
 
@@ -78,6 +80,20 @@ export function useCreateUserWiegand() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["userWiegands"], exact: false });
+    },
+  });
+}
+
+export function useSoftDeleteWiegandGroup() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (payload: { group_id: string; sn: string }) => {
+      const res = await api.delete(`/v1/api/wiegand_groups/delete`, { data: payload });
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["wiegandGroups"], exact: false });
     },
   });
 }

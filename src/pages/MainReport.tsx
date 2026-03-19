@@ -24,7 +24,7 @@ import type { Device } from "../types/deviceTypes";
 import type { UserData } from "../types/userTypes";
 
 type ReportType =
-  | "user_report"
+  | "enroll_report"
   | "device_report"
   | "access_log_report"
   | "group_report"
@@ -226,7 +226,7 @@ function SearchSuggest<T>({
 }
 
 const reportTabs: Array<{ key: ReportType; label: string; hasSearch: boolean }> = [
-  { key: "user_report", label: "User Report", hasSearch: true },
+  { key: "enroll_report", label: "Enroll Report", hasSearch: true },
   { key: "device_report", label: "Device Report", hasSearch: true },
   { key: "group_report", label: "Group Report", hasSearch: true },
   { key: "user_wiegand_report", label: "User Remote/Time Report", hasSearch: true },
@@ -234,7 +234,7 @@ const reportTabs: Array<{ key: ReportType; label: string; hasSearch: boolean }> 
 ];
 
 const MainReport = () => {
-  const [reportType, setReportType] = useState<ReportType>("user_report");
+  const [reportType, setReportType] = useState<ReportType>("enroll_report");
 
   const [searchText, setSearchText] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -252,7 +252,7 @@ const MainReport = () => {
   const downloadMutation = useAccessListMutation();
 
   const shouldFetchUsers =
-    (reportType === "user_report" ||
+    (reportType === "enroll_report" ||
       reportType === "user_wiegand_report" ||
       reportType === "access_log_report") &&
     debouncedSearchQuery.trim().length > 0;
@@ -725,7 +725,7 @@ const MainReport = () => {
             ? selectedWiegandGroup?.id
             : undefined,
       user_id:
-        reportType === "user_report" || reportType === "user_wiegand_report"
+        reportType === "enroll_report" || reportType === "user_wiegand_report"
           ? selectedUser?.user_id ?? undefined
           : reportType === "access_log_report"
             ? selectedUser?.user_id ?? (accessLogSearch ? accessLogSearch : undefined)
@@ -887,7 +887,7 @@ const MainReport = () => {
           </Typography>
 
           <div className="grid grid-cols-1 gap-4">
-            {(reportType === "user_report" || reportType === "user_wiegand_report") && (
+            {(reportType === "enroll_report" || reportType === "user_wiegand_report") && (
               <SearchSuggest<UserData>
                 label="Search User"
                 value={searchText}
