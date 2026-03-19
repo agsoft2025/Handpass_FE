@@ -12,7 +12,7 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { DatePicker } from "@mui/x-date-pickers";
+import { DatePicker, DateTimePicker } from "@mui/x-date-pickers";
 import type { Dayjs } from "dayjs";
 import { useMemo, useState } from "react";
 import { useDebounce } from "../hooks/useDebounce";
@@ -239,10 +239,14 @@ const MainReport = () => {
   const [searchText, setSearchText] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearchQuery = useDebounce(searchQuery, 350);
+  const [accessLogGroupSearchText, setAccessLogGroupSearchText] = useState("");
+  const [accessLogGroupSearchQuery, setAccessLogGroupSearchQuery] = useState("");
+  const debouncedAccessLogGroupSearchQuery = useDebounce(accessLogGroupSearchQuery, 350);
 
   const [selectedUser, setSelectedUser] = useState<UserData | null>(null);
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
   const [selectedWiegandGroup, setSelectedWiegandGroup] = useState<WiegandGroup | null>(null);
+  const [selectedAccessLogGroup, setSelectedAccessLogGroup] = useState<WiegandGroup | null>(null);
 
   const [startDate, setStartDate] = useState<Dayjs | null>(null);
   const [endDate, setEndDate] = useState<Dayjs | null>(null);
@@ -257,22 +261,35 @@ const MainReport = () => {
       reportType === "access_log_report") &&
     debouncedSearchQuery.trim().length > 0;
   const shouldFetchDevices = reportType === "device_report" && debouncedSearchQuery.trim().length > 0;
-  const shouldFetchGroups = reportType === "group_report" && debouncedSearchQuery.trim().length > 0;
+  const shouldFetchGroups =
+    (reportType === "group_report" && debouncedSearchQuery.trim().length > 0) ||
+    (reportType === "access_log_report" && debouncedAccessLogGroupSearchQuery.trim().length > 0);
 
   const { data: usersData, isFetching: isUsersFetching } = useUsers(1, 10, debouncedSearchQuery, shouldFetchUsers);
   const { data: devicesData, isFetching: isDevicesFetching } = useDevices(1, debouncedSearchQuery, shouldFetchDevices);
   const { data: wiegandGroupsData, isFetching: isWiegandGroupsFetching } = useWiegandGroups(0, shouldFetchGroups);
 
-  const filteredWiegandGroups = useMemo(() => {
-    const list: WiegandGroup[] = (wiegandGroupsData?.data ?? wiegandGroupsData ?? []) as any;
-    const q = debouncedSearchQuery.trim().toLowerCase();
-    if (!q) return list;
-    return list.filter((g) => {
+  const wiegandGroupsList = useMemo(() => {
+    return (wiegandGroupsData?.data ?? wiegandGroupsData ?? []) as WiegandGroup[];
+  }, [wiegandGroupsData]);
+
+  const filterWiegandGroups = (q: string) => {
+    const query = q.trim().toLowerCase();
+    if (!query) return wiegandGroupsList;
+    return wiegandGroupsList.filter((g) => {
       const groupId = String(g?.group_id ?? "").toLowerCase();
       const sn = String(g?.sn ?? "").toLowerCase();
-      return groupId.includes(q) || sn.includes(q);
+      return groupId.includes(query) || sn.includes(query);
     });
-  }, [wiegandGroupsData, debouncedSearchQuery]);
+  };
+
+  const filteredWiegandGroups = useMemo(() => {
+    return filterWiegandGroups(debouncedSearchQuery);
+  }, [wiegandGroupsList, debouncedSearchQuery]);
+
+  const filteredAccessLogWiegandGroups = useMemo(() => {
+    return filterWiegandGroups(debouncedAccessLogGroupSearchQuery);
+  }, [wiegandGroupsList, debouncedAccessLogGroupSearchQuery]);
 
   const downloadBlob = (blob: Blob, filename: string) => {
     const url = URL.createObjectURL(blob);
@@ -708,6 +725,25 @@ const MainReport = () => {
     }
 
     const accessLogSearch = searchQuery.trim();
+    const accessLogGroupSearch = accessLogGroupSearchQuery.trim();
+
+    const startDateValue =
+      reportType === "access_log_report"
+        ? startDate
+          ? startDate.format("YYYY-MM-DD HH:mm:ss")
+          : undefined
+        : startDate
+          ? startDate.format("YYYY-MM-DD")
+          : undefined;
+
+    const endDateValue =
+      reportType === "access_log_report"
+        ? endDate
+          ? endDate.format("YYYY-MM-DD HH:mm:ss")
+          : undefined
+        : endDate
+          ? endDate.format("YYYY-MM-DD")
+          : undefined;
 
     const payload = {
       report_type: reportType,
@@ -716,8 +752,8 @@ const MainReport = () => {
       sortField: "created_at",
       sortOrder: "desc" as const,
       format: downloadFormat,
-      start_date: startDate ? startDate.format("YYYY-MM-DD") : undefined,
-      end_date: endDate ? endDate.format("YYYY-MM-DD") : undefined,
+      start_date: startDateValue,
+      end_date: endDateValue,
       id:
         reportType === "device_report"
           ? selectedDevice?.id
@@ -733,6 +769,10 @@ const MainReport = () => {
       name:
         reportType === "access_log_report"
           ? selectedUser?.name ?? (accessLogSearch ? accessLogSearch : undefined)
+          : undefined,
+      group_id:
+        reportType === "access_log_report"
+          ? selectedAccessLogGroup?.group_id ?? (accessLogGroupSearch ? accessLogGroupSearch : undefined)
           : undefined,
     };
 
@@ -850,9 +890,12 @@ const MainReport = () => {
     setReportType(next);
     setSearchText("");
     setSearchQuery("");
+    setAccessLogGroupSearchText("");
+    setAccessLogGroupSearchQuery("");
     setSelectedUser(null);
     setSelectedDevice(null);
     setSelectedWiegandGroup(null);
+    setSelectedAccessLogGroup(null);
   };
 
   return (
@@ -979,20 +1022,63 @@ const MainReport = () => {
               />
             )}
 
+            {reportType === "access_log_report" && (
+              <SearchSuggest<WiegandGroup>
+                label="Search Group (Access Log)"
+                value={accessLogGroupSearchText}
+                onChange={(v) => {
+                  setAccessLogGroupSearchText(v);
+                  setAccessLogGroupSearchQuery(v);
+                  setSelectedAccessLogGroup(null);
+                }}
+                items={filteredAccessLogWiegandGroups}
+                loading={isWiegandGroupsFetching}
+                getKey={(g) => `${g.id ?? g.group_id}:${g.sn ?? ""}`}
+                getPrimary={(g) => g.group_id}
+                getSecondary={(g) => g.sn ?? ""}
+                onSelect={(g) => {
+                  setSelectedAccessLogGroup(g);
+                  setAccessLogGroupSearchText(g.group_id);
+                  setAccessLogGroupSearchQuery("");
+                }}
+                emptyText="No groups"
+              />
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <DatePicker
-                label="Start Date"
-                value={startDate}
-                onChange={(value) => setStartDate(value)}
-                slotProps={{ textField: { size: "small", fullWidth: true } }}
-              />
-              <DatePicker
-                label="End Date"
-                value={endDate}
-                minDate={startDate ?? undefined}
-                onChange={(value) => setEndDate(value)}
-                slotProps={{ textField: { size: "small", fullWidth: true } }}
-              />
+              {reportType === "access_log_report" ? (
+                <DateTimePicker
+                  label="Start Date & Time"
+                  value={startDate}
+                  onChange={(value) => setStartDate(value)}
+                  slotProps={{ textField: { size: "small", fullWidth: true } }}
+                />
+              ) : (
+                <DatePicker
+                  label="Start Date"
+                  value={startDate}
+                  onChange={(value) => setStartDate(value)}
+                  slotProps={{ textField: { size: "small", fullWidth: true } }}
+                />
+              )}
+
+              {reportType === "access_log_report" ? (
+                <DateTimePicker
+                  label="End Date & Time"
+                  value={endDate}
+                  minDateTime={startDate ?? undefined}
+                  onChange={(value) => setEndDate(value)}
+                  slotProps={{ textField: { size: "small", fullWidth: true } }}
+                />
+              ) : (
+                <DatePicker
+                  label="End Date"
+                  value={endDate}
+                  minDate={startDate ?? undefined}
+                  onChange={(value) => setEndDate(value)}
+                  slotProps={{ textField: { size: "small", fullWidth: true } }}
+                />
+              )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">

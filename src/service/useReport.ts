@@ -41,6 +41,7 @@ export type AccessListPayload = {
   user_id?: string;
   sn?: string | null;
   name?: string | null;
+  group_id?: string | null;
   format?: string;
   start_date?: unknown;
   end_date?: unknown;

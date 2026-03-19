@@ -16,6 +16,7 @@ export interface ReportResponse {
 
 export interface ReportPayload {
   sn: string | null | undefined;
+  group_id?: string | null;
   name: UserOption | null;
   format: string;
   start_date: any | null;

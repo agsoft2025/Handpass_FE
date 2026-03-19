@@ -1,18 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 
-interface TimeConfigPayload {
-  start: number;
-  end: number;
-  weekdays: number;
-}
-
 export interface CreateWiegandGroupPayload {
   group_id: string;
   sn: string;
-  timestamp: number;
-  del_flag: number;
-  time_configs: TimeConfigPayload[];
 }
 
 export interface CreateUserWiegandPayload {
