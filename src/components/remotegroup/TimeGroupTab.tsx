@@ -62,7 +62,27 @@ const TimeGroupTab = () => {
     data: timeGroupsData,
     isLoading: isTimeGroupsLoading,
     isFetching: isTimeGroupsFetching,
+    isError: isTimeGroupsError,
+    error: timeGroupsError,
   } = useTimeGroups(0, true, timePaginationModel.page + 1, timePaginationModel.pageSize);
+
+  const timeGroupsErrorMessage = useMemo(() => {
+    if (!isTimeGroupsError) return "";
+    const err: any = timeGroupsError;
+    const msg =
+      err?.response?.data?.msg ||
+      err?.response?.data?.message ||
+      (typeof err?.response?.data === "string" ? err.response.data : "") ||
+      err?.message ||
+      "";
+
+    const normalized = String(msg || "").trim();
+    if (!normalized) return "Unable to fetch time groups.";
+    if (normalized.toLowerCase() === "network error") {
+      return "Unable to reach the server. Please check your network / backend URL and try again.";
+    }
+    return normalized;
+  }, [isTimeGroupsError, timeGroupsError]);
 
   const timeList = Array.isArray(timeGroupsData)
     ? timeGroupsData
@@ -280,6 +300,11 @@ const TimeGroupTab = () => {
       {error && !timeOpen && (
         <Alert severity="error" sx={{ mb: 2 }}>
           {error}
+        </Alert>
+      )}
+      {isTimeGroupsError && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {timeGroupsErrorMessage}
         </Alert>
       )}
 

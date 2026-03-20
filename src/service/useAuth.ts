@@ -24,9 +24,6 @@ export function useLogin() {
             }); // login endpoint
             return res.data;
         },
-        onSuccess: () => {  
-            enqueueSnackbar("Login successful!", { variant: "success" });
-        },
         onError: (error: any) => {
             enqueueSnackbar(error.response?.data?.message || error.message, { variant: "error" });
         },

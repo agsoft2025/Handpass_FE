@@ -13,13 +13,14 @@ export function useApiInterceptor() {
     const interceptorId = api.interceptors.response.use(
       (response) => response,
       (error) => {
+        const requestUrl = String((error.config as any)?.url ?? "");
+        const isAuthBootstrapCall = requestUrl.includes("/api/auth/me");
+        const skipErrorToast = Boolean((error.config as any)?.skipErrorToast);
+        const method = String((error.config as any)?.method ?? "").toLowerCase();
+        const isGetCall = method === "get";
+
         if (error.response) {
           const status = error.response.status;
-          const requestUrl = String(error.config?.url ?? "");
-          const isAuthBootstrapCall = requestUrl.includes("/api/auth/me");
-          const skipErrorToast = Boolean((error.config as any)?.skipErrorToast);
-          const method = String((error.config as any)?.method ?? "").toLowerCase();
-          const isGetCall = method === "get";
 
           if ((status === 401 || status === 403) && isAuthBootstrapCall) {
             return Promise.reject(error);
@@ -39,7 +40,18 @@ export function useApiInterceptor() {
             enqueueSnackbar("Something went wrong", { variant: "error" });
           }
         } else {
-          enqueueSnackbar(error.message, { variant: "error" });
+          if (skipErrorToast) return Promise.reject(error);
+          if (isGetCall && !isAuthBootstrapCall) return Promise.reject(error);
+
+          const raw = String(error?.message ?? "").trim();
+          const msg =
+            isAuthBootstrapCall
+              ? "Unable to reach the server. Please try again."
+              : raw && raw.toLowerCase() !== "network error"
+                ? raw
+                : "Network error. Please try again.";
+
+          enqueueSnackbar(msg, { variant: "error" });
         }
 
         return Promise.reject(error);
