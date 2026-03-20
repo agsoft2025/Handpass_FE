@@ -7,9 +7,13 @@ import { DeleteConfirmDialog } from "../components/common/DeleteConfirmDialog";
 import { Box, Button } from "@mui/material";
 import { DataGrid, type GridColDef } from "@mui/x-data-grid";
 import { LayoutGrid, List, Pencil, Trash } from "lucide-react";
+import { useAuth } from "../auth/AuthProvider";
 
 
 const Devices = () => {
+  const { user } = useAuth();
+  const role = String((user as any)?.role ?? "").toLowerCase();
+  const isOperator = role === "operator";
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 10 });
 
@@ -27,6 +31,7 @@ const Devices = () => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const handleEdit = (device: any) => {
+    if (isOperator) return;
     setSelected(device);
     setOpen(true);
   };
@@ -47,6 +52,7 @@ const Devices = () => {
   };
 
   const handleDeleteClick = (device: any) => {
+    if (isOperator) return;
     setSelectedId(device.id);
   };
 
@@ -128,12 +134,16 @@ const Devices = () => {
       sortable: false,
       renderCell: (params) => (
         <div>
-          <Button variant="text" size="small" onClick={() => handleEdit(params.row)}>
-            <Pencil size={18} />
-          </Button>
-          <Button variant="text" color="error" size="small" onClick={() => handleDeleteClick(params.row)}>
-            <Trash size={18} />
-          </Button>
+          {!isOperator && (
+            <>
+              <Button variant="text" size="small" onClick={() => handleEdit(params.row)}>
+                <Pencil size={18} />
+              </Button>
+              <Button variant="text" color="error" size="small" onClick={() => handleDeleteClick(params.row)}>
+                <Trash size={18} />
+              </Button>
+            </>
+          )}
         </div>
       ),
     },

@@ -36,6 +36,7 @@ import {
   type Weekday,
   weekdayLabelMap,
 } from "./utils";
+import { useAuth } from "../../auth/AuthProvider";
 
 const initialAssignForm = {
   sn: "",
@@ -50,6 +51,9 @@ type UserSearchResult = {
 };
 
 const AssignRemoteTimeGroupTab = () => {
+  const { user } = useAuth();
+  const role = String((user as any)?.role ?? "").toLowerCase();
+  const isOperator = role === "operator";
   const [assignPaginationModel, setAssignPaginationModel] = useState<GridPaginationModel>({
     page: 0,
     pageSize: 10,
@@ -219,18 +223,22 @@ const AssignRemoteTimeGroupTab = () => {
       sortable: false,
       renderCell: (params) => (
         <div>
-          <Button variant="text" size="small" onClick={() => handleEditAssignRow(params.row)}>
-            <Edit />
-          </Button>
-          <Button
-            variant="text"
-            color="error"
-            size="small"
-            onClick={() => handleDeleteAssignRow(params.row)}
-            disabled={deleteUserWiegand.isPending}
-          >
-            <Trash />
-          </Button>
+          {!isOperator && (
+            <>
+              <Button variant="text" size="small" onClick={() => handleEditAssignRow(params.row)}>
+                <Edit />
+              </Button>
+              <Button
+                variant="text"
+                color="error"
+                size="small"
+                onClick={() => handleDeleteAssignRow(params.row)}
+                disabled={deleteUserWiegand.isPending}
+              >
+                <Trash />
+              </Button>
+            </>
+          )}
         </div>
       ),
     },
@@ -349,6 +357,7 @@ const AssignRemoteTimeGroupTab = () => {
   }
 
   async function handleDeleteAssignRow(row: any) {
+    if (isOperator) return;
     const user_id = String(row?.user_id ?? "");
     const ids: string[] = Array.isArray(row?.assignment_ids) ? row.assignment_ids : [];
     if (!user_id || ids.length === 0) {
@@ -360,6 +369,7 @@ const AssignRemoteTimeGroupTab = () => {
 
   const handleConfirmDelete = async () => {
     if (!deleteTarget) return;
+    if (isOperator) return;
     setAssignError("");
     setAssignSuccess("");
     try {
@@ -373,6 +383,7 @@ const AssignRemoteTimeGroupTab = () => {
 
   const handleAssignSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isOperator) return;
     setAssignError("");
     setAssignSuccess("");
 
@@ -429,26 +440,28 @@ const AssignRemoteTimeGroupTab = () => {
   return (
     <>
       <div className="mb-4 flex items-center justify-end">
-        <Button
-          variant="contained"
-          className="!bg-primary"
-          onClick={() => {
-            setAssignError("");
-            setAssignSuccess("");
-            setIsAssignEditMode(false);
-            setEditAssignmentIds([]);
-            setAssignForm({ ...initialAssignForm });
-            setUserSearchText("");
-            setShowUserSuggestions(false);
-            setRemoteGroupSearchText("");
-            setShowRemoteGroupSuggestions(false);
-            setTimeGroupSearchText("");
-            setShowTimeGroupSuggestions(false);
-            setAssignOpen(true);
-          }}
-        >
-          Assign remote/time group
-        </Button>
+        {!isOperator && (
+          <Button
+            variant="contained"
+            className="!bg-primary"
+            onClick={() => {
+              setAssignError("");
+              setAssignSuccess("");
+              setIsAssignEditMode(false);
+              setEditAssignmentIds([]);
+              setAssignForm({ ...initialAssignForm });
+              setUserSearchText("");
+              setShowUserSuggestions(false);
+              setRemoteGroupSearchText("");
+              setShowRemoteGroupSuggestions(false);
+              setTimeGroupSearchText("");
+              setShowTimeGroupSuggestions(false);
+              setAssignOpen(true);
+            }}
+          >
+            Assign remote/time group
+          </Button>
+        )}
       </div>
 
       {assignSuccess && (

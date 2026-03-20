@@ -21,8 +21,11 @@ export const NAV_ITEMS = [
 export function Sidebar() {
     const location = useLocation();
     const navigate = useNavigate();
-    const {logout} = useAuth();
+    const { logout, user } = useAuth();
     const queryClient = useQueryClient();
+
+    const role = String((user as any)?.role ?? "").toLowerCase();
+    const isOperator = role === "operator";
 
     const handleLogout = async () => {
        await logout();
@@ -40,7 +43,12 @@ export function Sidebar() {
             {/* Navigation items */}
             <nav className="flex-1 space-y-2 p-5">
                 <img src={logo} alt="logo" className="bg-white/90 p-4 rounded-2xl" />
-                {NAV_ITEMS.map(({ label, href, icon: Icon }) => {
+                {(isOperator
+                    ? NAV_ITEMS.filter((item) =>
+                        ["/dashboard", "/users", "/devices", "/reports", "/remote-management"].includes(item.href)
+                      )
+                    : NAV_ITEMS
+                  ).map(({ label, href, icon: Icon }) => {
                     const active = location.pathname === href;
 
                     return (

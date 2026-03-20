@@ -10,6 +10,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import UserDetailsDialog from '../components/user/UserDetailsDialog';
 import type { UserData, UserGroup } from '../types/userTypes';
 import { useDebounce } from '../hooks/useDebounce';
+import { useAuth } from '../auth/AuthProvider';
 
 type UserRow = {
   id: string;
@@ -26,6 +27,9 @@ type UserRow = {
 };
 
 const Users = () => {
+  const { user } = useAuth();
+  const role = String((user as any)?.role ?? "").toLowerCase();
+  const isOperator = role === "operator";
   const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 10 });
   const [searchText, setSearchText] = useState("");
   const debouncedSearch = useDebounce(searchText.trim(), 400);
@@ -69,6 +73,7 @@ const Users = () => {
   if (isError) return <p>Error fetching users!</p>;
 
   const handleEdit = (row: UserRow) => {
+    if (isOperator) return;
     setEditUser({
       id: row.id,
       name: row.name,
@@ -156,20 +161,24 @@ const Users = () => {
     {
       field: "actions",
       headerName: "Actions",
-      flex: 1.5,
+      flex: 0.6,
       sortable: false,
       renderCell: (params) => (
-        <div>
-          <Button variant="text" size="small" onClick={() => handleView(params.row?.id)}>
-            <Eye />
+        <Box sx={{ display: "flex", gap: 1 }}>
+          <Button size="small" variant="text" onClick={() => handleView(params.row.id)}>
+            <Eye size={18} />
           </Button>
-          <Button variant="text" size="small" onClick={() => handleEdit(params.row)}>
-            <Edit />
-          </Button>
-          <Button variant="text" color="error" size="small" onClick={() => setSelectedId(params.row.id)}>
-            <Trash />
-          </Button>
-        </div>
+          {!isOperator && (
+            <>
+              <Button size="small" variant="text" onClick={() => handleEdit(params.row)}>
+                <Edit size={18} />
+              </Button>
+              <Button size="small" variant="text" color="error" onClick={() => setSelectedId(params.row.id)}>
+                <Trash size={18} />
+              </Button>
+            </>
+          )}
+        </Box>
       ),
     },
   ];
@@ -199,6 +208,7 @@ const Users = () => {
 
   const handleConfirmDelete = () => {
     if (!selectedId) return;
+    if (isOperator) return;
 
     deleteMutation.mutate(selectedId, {
       onSuccess: () => {

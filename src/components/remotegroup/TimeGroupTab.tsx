@@ -27,6 +27,7 @@ import {
   weekdayLabelMap,
   weekdayOptions,
 } from "./utils";
+import { useAuth } from "../../auth/AuthProvider";
 
 const initialTimeForm = {
   time_group_id: "",
@@ -38,6 +39,9 @@ const initialTimeForm = {
 };
 
 const TimeGroupTab = () => {
+  const { user } = useAuth();
+  const role = String((user as any)?.role ?? "").toLowerCase();
+  const isOperator = role === "operator";
   const [timeOpen, setTimeOpen] = useState(false);
   const [timePaginationModel, setTimePaginationModel] = useState<GridPaginationModel>({
     page: 0,
@@ -173,12 +177,16 @@ const TimeGroupTab = () => {
       sortable: false,
       renderCell: (params) => (
         <Stack direction="row" spacing={0.5}>
-          <IconButton size="small" onClick={() => handleEditTimeRow(params.row)}>
-            <Edit size={18} />
-          </IconButton>
-          <IconButton size="small" color="error" onClick={() => handleDeleteTimeRow(params.row)}>
-            <Trash size={18} />
-          </IconButton>
+          {!isOperator && (
+            <>
+              <IconButton size="small" onClick={() => handleEditTimeRow(params.row)}>
+                <Edit size={18} />
+              </IconButton>
+              <IconButton size="small" color="error" onClick={() => handleDeleteTimeRow(params.row)}>
+                <Trash size={18} />
+              </IconButton>
+            </>
+          )}
         </Stack>
       ),
     },
@@ -239,27 +247,29 @@ const TimeGroupTab = () => {
   return (
     <>
       <div className="mb-4 flex items-center justify-end">
-        <Button
-          variant="contained"
-          className="!bg-primary"
-          onClick={() => {
-            setError("");
-            setSuccess("");
-            setIsTimeEditMode(false);
-            setSelectedTimeId("");
-            setTimeForm({
-              time_group_id: "",
-              timestamp: String(Math.floor(Date.now() / 1000)),
-              del_flag: "0",
-              start: "",
-              end: "",
-              weekdays: [],
-            });
-            setTimeOpen(true);
-          }}
-        >
-          Create time group
-        </Button>
+        {!isOperator && (
+          <Button
+            variant="contained"
+            className="!bg-primary"
+            onClick={() => {
+              setError("");
+              setSuccess("");
+              setIsTimeEditMode(false);
+              setSelectedTimeId("");
+              setTimeForm({
+                time_group_id: "",
+                timestamp: String(Math.floor(Date.now() / 1000)),
+                del_flag: "0",
+                start: "",
+                end: "",
+                weekdays: [],
+              });
+              setTimeOpen(true);
+            }}
+          >
+            Create time group
+          </Button>
+        )}
       </div>
 
       {success && (

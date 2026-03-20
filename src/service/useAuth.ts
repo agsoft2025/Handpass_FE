@@ -7,6 +7,13 @@ export type LoginFormValues = {
     password: string;
 };
 
+export type RegisterFormValues = {
+    name: string;
+    email: string;
+    password: string;
+    role: "admin" | "operator";
+};
+
 export function useLogin() {
     const { enqueueSnackbar } = useSnackbar();
 
@@ -19,6 +26,23 @@ export function useLogin() {
         },
         onSuccess: () => {  
             enqueueSnackbar("Login successful!", { variant: "success" });
+        },
+        onError: (error: any) => {
+            enqueueSnackbar(error.response?.data?.message || error.message, { variant: "error" });
+        },
+    });
+}
+
+export function useRegisterUser() {
+    const { enqueueSnackbar } = useSnackbar();
+
+    return useMutation({
+        mutationFn: async (data: RegisterFormValues) => {
+            const res = await api.post("/api/auth", data, { withCredentials: true });
+            return res.data;
+        },
+        onSuccess: () => {
+            enqueueSnackbar("User created successfully!", { variant: "success" });
         },
         onError: (error: any) => {
             enqueueSnackbar(error.response?.data?.message || error.message, { variant: "error" });

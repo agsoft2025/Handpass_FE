@@ -30,6 +30,7 @@ import {
   type Weekday,
   weekdayLabelMap,
 } from "./utils";
+import { useAuth } from "../../auth/AuthProvider";
 
 const initialForm = {
   group_id: "",
@@ -37,6 +38,9 @@ const initialForm = {
 };
 
 const RemoteGroupTab = () => {
+  const { user } = useAuth();
+  const role = String((user as any)?.role ?? "").toLowerCase();
+  const isOperator = role === "operator";
   const [open, setOpen] = useState(false);
   const [groupsPaginationModel, setGroupsPaginationModel] = useState<GridPaginationModel>({
     page: 0,
@@ -169,17 +173,21 @@ const RemoteGroupTab = () => {
       sortable: false,
       renderCell: (params) => (
         <Stack direction="row" spacing={1}>
-          <IconButton size="small" onClick={() => handleEditRow(params.row)}>
-            <Edit size={18} />
-          </IconButton>
-          <IconButton
-            size="small"
-            color="error"
-            onClick={() => handleDeleteClick(params.row)}
-            disabled={softDeleteWiegandGroup.isPending}
-          >
-            <Trash size={18} />
-          </IconButton>
+          {!isOperator && (
+            <>
+              <IconButton size="small" onClick={() => handleEditRow(params.row)}>
+                <Edit size={18} />
+              </IconButton>
+              <IconButton
+                size="small"
+                color="error"
+                onClick={() => handleDeleteClick(params.row)}
+                disabled={softDeleteWiegandGroup.isPending}
+              >
+                <Trash size={18} />
+              </IconButton>
+            </>
+          )}
         </Stack>
       ),
     },
@@ -227,22 +235,24 @@ const RemoteGroupTab = () => {
   return (
     <>
       <div className="mb-4 flex items-center justify-end">
-        <Button
-          variant="contained"
-          className="!bg-primary"
-          onClick={() => {
-            setError("");
-            setSuccess("");
-            setIsEditMode(false);
-            setSelectedId("");
-            setSnSearchText("");
-            setSnSearchQuery("");
-            setForm({ ...initialForm });
-            setOpen(true);
-          }}
-        >
-          Create remote group
-        </Button>
+        {!isOperator && (
+          <Button
+            variant="contained"
+            className="!bg-primary"
+            onClick={() => {
+              setError("");
+              setSuccess("");
+              setIsEditMode(false);
+              setSelectedId("");
+              setSnSearchText("");
+              setSnSearchQuery("");
+              setForm({ ...initialForm });
+              setOpen(true);
+            }}
+          >
+            Create remote group
+          </Button>
+        )}
       </div>
 
       {success && (

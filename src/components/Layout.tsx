@@ -14,9 +14,14 @@ export function LayoutContainer({ sidebar }: LayoutContainerProps) {
       </aside>
 
       {/* Main Content */}
-      <main className="p-6 overflow-auto">
-        <Outlet />
-      </main>
+      <div className="h-screen flex flex-col">
+        <main className="p-6 overflow-auto flex-1">
+          <Outlet />
+        </main>
+        <footer className="px-6 py-3 text-sm text-gray-500 border-t">
+          Copy Rights to AG Soft Solutions
+        </footer>
+      </div>
     </div>
   );
 }

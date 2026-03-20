@@ -28,14 +28,14 @@ const GroupManagement = lazy(() => import("./pages/GroupManagement"));
 const WiegandGroup = lazy(()=> import("./pages/WiegandGroup"));
 const FirmwareCheck = lazy(() => import("./pages/FirmwareCheck"));
 const LoginForm = lazy(() => import("./pages/Login"));
-const AttenenceModule = lazy(() => import("./pages/AttendanceModule"));
+const Settings = lazy(() => import("./pages/Settings"));
 
 function App() {
   useEffect(() => {
     const warmRoutes = window.setTimeout(() => {
       void import("./pages/Devices");
       void import("./pages/Users");
-      void import("./pages/AttendanceModule");
+      void import("./pages/Settings");
     }, 300);
 
     return () => window.clearTimeout(warmRoutes);
@@ -71,7 +71,7 @@ function App() {
                   <Route path="/group-management" element={<GroupManagement />} />
                   <Route path="/remote-management" element={<WiegandGroup />} />
                   <Route path="/firm-check" element={<FirmwareCheck />} />
-                  <Route path="/settings" element={<AttenenceModule />} />
+                  <Route path="/settings" element={<Settings />} />
                 </Route>
               </Route>
 
