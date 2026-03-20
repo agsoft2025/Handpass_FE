@@ -66,7 +66,7 @@ export function useCreateUserWiegand() {
 
   return useMutation({
     mutationFn: async (payload: CreateUserWiegandPayload) => {
-      const res = await api.post("/v1/api/user_wiegands", payload);
+      const res = await api.post("/v1/api/user_wiegands", payload, { skipErrorToast: true } as any);
       return res.data;
     },
     onSuccess: () => {
@@ -80,7 +80,7 @@ export function useSoftDeleteWiegandGroup() {
 
   return useMutation({
     mutationFn: async (payload: { group_id: string; sn: string }) => {
-      const res = await api.delete(`/v1/api/wiegand_groups/delete`, { data: payload });
+      const res = await api.delete(`/v1/api/wiegand_groups/delete`, { data: payload, skipErrorToast: true } as any);
       return res.data;
     },
     onSuccess: () => {
@@ -94,7 +94,7 @@ export function useDeleteUserWiegand() {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const res = await api.delete(`/v1/api/user_wiegands/${id}`);
+      const res = await api.delete(`/v1/api/user_wiegands/${id}`, { skipErrorToast: true } as any);
       return res.data;
     },
     onSuccess: () => {
@@ -108,7 +108,7 @@ export function useUpdateUserWiegand() {
 
   return useMutation({
     mutationFn: async ({ id, payload }: { id: string; payload: UpdateUserWiegandPayload }) => {
-      const res = await api.put(`/v1/api/user_wiegands/${id}`, payload);
+      const res = await api.put(`/v1/api/user_wiegands/${id}`, payload, { skipErrorToast: true } as any);
       return res.data;
     },
     onSuccess: () => {
@@ -122,7 +122,7 @@ export function useCreateWiegandGroup() {
 
   return useMutation({
     mutationFn: async (payload: CreateWiegandGroupPayload) => {
-      const res = await api.post("/v1/api/wiegand_groups", payload);
+      const res = await api.post("/v1/api/wiegand_groups", payload, { skipErrorToast: true } as any);
       return res.data;
     },
     onSuccess: () => {
@@ -142,7 +142,7 @@ export function useUpdateWiegandGroup() {
       id: string;
       payload: CreateWiegandGroupPayload;
     }) => {
-      const res = await api.put(`/v1/api/wiegand_groups/${id}`, payload);
+      const res = await api.put(`/v1/api/wiegand_groups/${id}`, payload, { skipErrorToast: true } as any);
       return res.data;
     },
     onSuccess: () => {

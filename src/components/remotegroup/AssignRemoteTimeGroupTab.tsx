@@ -78,7 +78,6 @@ const AssignRemoteTimeGroupTab = () => {
     data: assignmentsData,
     isLoading: isAssignmentsLoading,
     isFetching: isAssignmentsFetching,
-    isError: isAssignmentsError,
   } = useUserWiegands(true, assignPaginationModel.page + 1, assignPaginationModel.pageSize);
 
   const { data: usersData, isLoading: isUsersLoading } = useUsers(
@@ -126,7 +125,11 @@ const AssignRemoteTimeGroupTab = () => {
           .filter((item: any) => item?.group_id)
           .map((item: any) => [
             item.group_id,
-            { group_id: String(item.group_id), sn: String(item.sn || "") } satisfies GroupIdOption,
+            {
+              group_id: String(item.group_id),
+              sn: String(item.sn || ""),
+              device_name: String(item.device_name || item.deviceName || ""),
+            } satisfies GroupIdOption,
           ])
       ).values()
     ) as GroupIdOption[];
@@ -134,6 +137,10 @@ const AssignRemoteTimeGroupTab = () => {
 
   const groupIdToSn = useMemo(() => {
     return new Map(groupOptions.map((o) => [String(o.group_id), String(o.sn || "")]));
+  }, [groupOptions]);
+
+  const groupIdToDeviceName = useMemo(() => {
+    return new Map(groupOptions.map((o) => [String(o.group_id), String(o.device_name || "")]));
   }, [groupOptions]);
 
   const timeGroupOptions: TimeGroupOption[] = useMemo(() => {
@@ -180,10 +187,14 @@ const AssignRemoteTimeGroupTab = () => {
 
   const remoteGroupHelperText = useMemo(() => {
     const groupId = String(assignForm.remote_group_id || "").trim();
-    if (!groupId) return "Type group id or device SN to search, then pick from results.";
-    const sn = groupIdToSn.get(groupId);
-    return sn ? `Device SN: ${sn}` : "Device SN not found for this group.";
-  }, [assignForm.remote_group_id, groupIdToSn]);
+    if (!groupId) return "Type group id or device name to search, then pick from results.";
+    const deviceName = String(groupIdToDeviceName.get(groupId) || "").trim();
+    const sn = String(groupIdToSn.get(groupId) || "").trim();
+    if (deviceName && sn) return `Device: ${deviceName} (${sn})`;
+    if (deviceName) return `Device: ${deviceName}`;
+    if (sn) return `Device SN: ${sn}`;
+    return "Device not found for this group.";
+  }, [assignForm.remote_group_id, groupIdToDeviceName, groupIdToSn]);
 
   const timeGroupHelperText = useMemo(() => {
     const id = String(assignForm.time_group_id || "").trim();
@@ -195,7 +206,12 @@ const AssignRemoteTimeGroupTab = () => {
     const q = remoteGroupSearchText.trim().toLowerCase();
     if (!q) return groupOptions.slice(0, 8);
     return groupOptions
-      .filter((o) => String(o.group_id).toLowerCase().includes(q) || String(o.sn || "").toLowerCase().includes(q))
+      .filter(
+        (o) =>
+          String(o.group_id).toLowerCase().includes(q) ||
+          String(o.device_name || "").toLowerCase().includes(q) ||
+          String(o.sn || "").toLowerCase().includes(q)
+      )
       .slice(0, 8);
   }, [remoteGroupSearchText, groupOptions]);
 
@@ -214,7 +230,7 @@ const AssignRemoteTimeGroupTab = () => {
     { field: "user_id", headerName: "UserID", flex: 0.8 },
     { field: "remote_group_ids", headerName: "RemoteGroupID(s)", flex: 1.2 },
     { field: "time_group_ids", headerName: "TimeGroupID(s)", flex: 1.0 },
-    { field: "sns", headerName: "Access to Device(s)", flex: 1.8 },
+    { field: "device_names", headerName: "Access to Device(s)", flex: 1.8 },
     { field: "timestamp", headerName: "Timestamp", flex: 1 },
     {
       field: "actions",
@@ -253,6 +269,7 @@ const AssignRemoteTimeGroupTab = () => {
         remote_group_ids: Set<string>;
         time_group_ids: Set<string>;
         sns: Set<string>;
+        device_names: Set<string>;
         latest_timestamp: number;
       }
     >();
@@ -265,6 +282,7 @@ const AssignRemoteTimeGroupTab = () => {
       const groupId = String(item?.group_id ?? item?.remote_group_id ?? "").trim();
       const timeGroupId = String(item?.time_group_id ?? "").trim();
       const sn = String(item?.sn ?? "").trim();
+      const deviceName = String(item?.device_name ?? item?.deviceName ?? "").trim();
       const ts = Number(item?.timestamp ?? 0) || 0;
 
       if (!byUser.has(user_id)) {
@@ -274,6 +292,7 @@ const AssignRemoteTimeGroupTab = () => {
           remote_group_ids: new Set<string>(),
           time_group_ids: new Set<string>(),
           sns: new Set<string>(),
+          device_names: new Set<string>(),
           latest_timestamp: ts,
         });
       }
@@ -283,20 +302,26 @@ const AssignRemoteTimeGroupTab = () => {
       if (groupId) agg.remote_group_ids.add(groupId);
       if (timeGroupId) agg.time_group_ids.add(timeGroupId);
       if (sn) agg.sns.add(sn);
+      if (deviceName && sn) agg.device_names.add(`${deviceName} (${sn})`);
+      else if (deviceName) agg.device_names.add(deviceName);
+      else if (sn) agg.device_names.add(sn);
       if (ts > agg.latest_timestamp) agg.latest_timestamp = ts;
     }
 
     return Array.from(byUser.values()).map((agg) => {
       const remoteGroupText = Array.from(agg.remote_group_ids).sort().join(", ") || "-";
-    const timeGroupText = Array.from(agg.time_group_ids).sort().join(", ") || "-";
-    const snsText = Array.from(agg.sns).sort().join(", ") || "-";
-    return {
-      id: agg.user_id,
+      const timeGroupText = Array.from(agg.time_group_ids).sort().join(", ") || "-";
+      const snsText = Array.from(agg.sns).sort().join(", ") || "-";
+      const deviceNamesText =
+        Array.from(agg.device_names).sort().join(", ") || (snsText !== "-" ? snsText : "-");
+      return {
+        id: agg.user_id,
         user_id: agg.user_id,
         assignment_ids: agg.assignment_ids,
         remote_group_ids: remoteGroupText,
         time_group_ids: timeGroupText,
         sns: snsText,
+        device_names: deviceNamesText,
         timestamp: agg.latest_timestamp || "-",
       };
     });
@@ -474,11 +499,6 @@ const AssignRemoteTimeGroupTab = () => {
           {assignError}
         </Alert>
       )}
-      {isAssignmentsError && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          Failed to fetch assignments.
-        </Alert>
-      )}
 
       <Box sx={{ height: 560, width: "100%", mb: 2 }}>
         <DataGrid
@@ -615,7 +635,10 @@ const AssignRemoteTimeGroupTab = () => {
                             setShowRemoteGroupSuggestions(false);
                           }}
                         >
-                          <ListItemText primary={`${g.group_id} (SN: ${g.sn || "-"})`} secondary={g.group_id} />
+                          <ListItemText
+                            primary={`${g.group_id} (Device: ${g.device_name ? `${g.device_name} (${g.sn || "-"})` : g.sn || "-"})`}
+                            secondary={g.device_name || g.group_id}
+                          />
                         </ListItemButton>
                       ))}
                     </List>

@@ -60,7 +60,7 @@ const RemoteGroupTab = () => {
   const createWiegandGroup = useCreateWiegandGroup();
   const updateWiegandGroup = useUpdateWiegandGroup();
   const softDeleteWiegandGroup = useSoftDeleteWiegandGroup();
-  const { data, isLoading, isFetching, isError } = useWiegandGroups(
+  const { data, isLoading, isFetching } = useWiegandGroups(
     0,
     true,
     groupsPaginationModel.page + 1,
@@ -171,8 +171,9 @@ const RemoteGroupTab = () => {
       headerName: "Action",
       flex: 0.6,
       sortable: false,
+      cellClassName: "hp-action-cell",
       renderCell: (params) => (
-        <Stack direction="row" spacing={1}>
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ height: "100%" }}>
           {!isOperator && (
             <>
               <IconButton size="small" onClick={() => handleEditRow(params.row)}>
@@ -226,7 +227,8 @@ const RemoteGroupTab = () => {
       setIsEditMode(false);
     } catch (err: any) {
       setError(
-        err?.response?.data?.message ||
+        err?.response?.data?.msg ||
+          err?.response?.data?.message ||
           (isEditMode ? "Failed to update wiegand group." : "Failed to create wiegand group.")
       );
     }
@@ -265,11 +267,6 @@ const RemoteGroupTab = () => {
           {error}
         </Alert>
       )}
-      {isError && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          Failed to fetch remote groups.
-        </Alert>
-      )}
 
       <Box sx={{ height: 560, width: "100%", mb: 2 }}>
         <DataGrid
@@ -286,6 +283,7 @@ const RemoteGroupTab = () => {
           disableColumnSelector
           sx={{
             "& .MuiDataGrid-cell:focus": { outline: "none" },
+            "& .hp-action-cell": { display: "flex", alignItems: "center" },
           }}
         />
       </Box>

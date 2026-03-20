@@ -62,7 +62,6 @@ const TimeGroupTab = () => {
     data: timeGroupsData,
     isLoading: isTimeGroupsLoading,
     isFetching: isTimeGroupsFetching,
-    isError: isTimeGroupsError,
   } = useTimeGroups(0, true, timePaginationModel.page + 1, timePaginationModel.pageSize);
 
   const timeList = Array.isArray(timeGroupsData)
@@ -175,8 +174,9 @@ const TimeGroupTab = () => {
       headerName: "Action",
       flex: 0.6,
       sortable: false,
+      cellClassName: "hp-action-cell",
       renderCell: (params) => (
-        <Stack direction="row" spacing={0.5}>
+        <Stack direction="row" spacing={0.5} alignItems="center" sx={{ height: "100%" }}>
           {!isOperator && (
             <>
               <IconButton size="small" onClick={() => handleEditTimeRow(params.row)}>
@@ -282,11 +282,6 @@ const TimeGroupTab = () => {
           {error}
         </Alert>
       )}
-      {isTimeGroupsError && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          Failed to fetch time groups.
-        </Alert>
-      )}
 
       <Box sx={{ height: 560, width: "100%", mb: 2 }}>
         <DataGrid
@@ -303,6 +298,7 @@ const TimeGroupTab = () => {
           disableColumnSelector
           sx={{
             "& .MuiDataGrid-cell:focus": { outline: "none" },
+            "& .hp-action-cell": { display: "flex", alignItems: "center" },
           }}
         />
       </Box>

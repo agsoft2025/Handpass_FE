@@ -14,6 +14,7 @@ import {
 } from "@mui/material";
 import { DatePicker, DateTimePicker } from "@mui/x-date-pickers";
 import type { Dayjs } from "dayjs";
+import { useSnackbar } from "notistack";
 import { useMemo, useState } from "react";
 import { useDebounce } from "../hooks/useDebounce";
 import { useDevices } from "../service/useDevice";
@@ -234,6 +235,7 @@ const reportTabs: Array<{ key: ReportType; label: string; hasSearch: boolean }> 
 ];
 
 const MainReport = () => {
+  const { enqueueSnackbar } = useSnackbar();
   const [reportType, setReportType] = useState<ReportType>("enroll_report");
 
   const [searchText, setSearchText] = useState("");
@@ -252,6 +254,7 @@ const MainReport = () => {
   const [endDate, setEndDate] = useState<Dayjs | null>(null);
 
   const [downloadFormat, setDownloadFormat] = useState<DownloadFormat>("csv");
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   const downloadMutation = useAccessListMutation();
 
@@ -359,71 +362,6 @@ const MainReport = () => {
       .join("");
 
     return `<table>${header}${body}</table>`;
-  };
-
-  const buildSimplePdf = (lines: string[]) => {
-    const safeLines = lines.filter(Boolean).slice(0, 80);
-    const contentStream =
-      [
-        "BT",
-        "/F1 10 Tf",
-        "12 TL",
-        "50 780 Td",
-        ...safeLines.map((l) => `(${pdfEscape(l)}) Tj T*`),
-        "ET",
-      ].join("\n") + "\n";
-
-    const encoder = new TextEncoder();
-
-    const objects: string[] = [];
-    objects[1] = "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n";
-    objects[2] = "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n";
-    objects[3] =
-      "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>\nendobj\n";
-    objects[4] = "4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n";
-    objects[5] =
-      `5 0 obj\n<< /Length ${encoder.encode(contentStream).length} >>\nstream\n` +
-      contentStream +
-      "endstream\nendobj\n";
-
-    const header = "%PDF-1.4\n";
-    const chunks: Uint8Array[] = [encoder.encode(header)];
-
-    const offsets: number[] = [];
-    offsets[0] = 0;
-
-    let cursor = chunks[0].length;
-    for (let i = 1; i <= 5; i++) {
-      offsets[i] = cursor;
-      const bytes = encoder.encode(objects[i]);
-      chunks.push(bytes);
-      cursor += bytes.length;
-    }
-
-    const xrefStart = cursor;
-    const pad10 = (n: number) => String(n).padStart(10, "0");
-    const xrefLines = [
-      "xref",
-      "0 6",
-      `${pad10(0)} 65535 f `,
-      ...[1, 2, 3, 4, 5].map((i) => `${pad10(offsets[i])} 00000 n `),
-      "trailer",
-      "<< /Size 6 /Root 1 0 R >>",
-      "startxref",
-      String(xrefStart),
-      "%%EOF\n",
-    ].join("\n");
-
-    chunks.push(encoder.encode(xrefLines));
-
-    const total = chunks.reduce((sum, b) => sum + b.length, 0);
-    const out = new Uint8Array(total);
-    let o = 0;
-    for (const b of chunks) {
-      out.set(b, o);
-      o += b.length;
-    }
-    return new Blob([out], { type: "application/pdf" });
   };
 
   const toPdfTableLines = (rows: Array<Record<string, unknown>>) => {
@@ -720,9 +658,7 @@ const MainReport = () => {
   };
 
   const handleDownload = () => {
-    if (reportType === "group_report" && !selectedWiegandGroup?.id) {
-      return;
-    }
+    setValidationError(null);
 
     const accessLogSearch = searchQuery.trim();
     const accessLogGroupSearch = accessLogGroupSearchQuery.trim();
@@ -776,6 +712,16 @@ const MainReport = () => {
           : undefined,
     };
 
+    const reportLabel = reportTabs.find((t) => t.key === reportType)?.label ?? reportType;
+    const toastFromMessage = (message: string) => {
+      const msg = String(message || "").trim() || `No data found for ${reportLabel}.`;
+      enqueueSnackbar(msg, { variant: "error" });
+    };
+    const toastNoData = (message?: string) => {
+      const msg = String(message || "").trim() || `No data found for ${reportLabel}.`;
+      enqueueSnackbar(msg, { variant: "error" });
+    };
+
     downloadMutation.mutate(payload, {
       onSuccess: async (data: any) => {
         const ext = downloadFormat === "excel" ? "xls" : downloadFormat;
@@ -783,15 +729,36 @@ const MainReport = () => {
 
         if (data instanceof Blob) {
           const isJson = data.type?.includes("application/json");
-          if (!isJson) {
+          const shouldProbeText = isJson || data.size < 200_000;
+          const probedText = shouldProbeText ? (await data.text()) : null;
+          const trimmed = (probedText ?? "").trim();
+          const looksLikeJson = !!trimmed && (trimmed.startsWith("{") || trimmed.startsWith("["));
+
+          if (!isJson && !looksLikeJson) {
             downloadBlob(data, filename);
             return;
           }
 
-          const jsonText = await data.text();
-          const json = JSON.parse(jsonText);
+          let json: any;
+          try {
+            json = JSON.parse(trimmed);
+          } catch {
+            downloadBlob(data, filename);
+            return;
+          }
 
-          const rows = Array.isArray(json?.data) ? (json.data as Array<Record<string, unknown>>) : [];
+          if (json?.success === false) {
+            toastFromMessage(String(json?.message ?? "No data found."));
+            return;
+          }
+
+          const normalized = normalizeRows(json);
+          if (normalized.length === 0 || json?.totalCount === 0) {
+            toastNoData(String(json?.message ?? ""));
+            return;
+          }
+
+          const rows = normalized as Array<Record<string, unknown>>;
 
           if (downloadFormat === "csv") {
             downloadTextFile(toCsv(rows), `${sanitizeFileName(reportType)}.csv`, "text/csv;charset=utf-8");
@@ -808,7 +775,6 @@ const MainReport = () => {
           }
 
           if (downloadFormat === "pdf") {
-            const normalized = normalizeRows(json);
             const materialized = normalized.map((r) => {
               if (!r || typeof r !== "object") return { value: r ?? "" } as any;
               try {
@@ -848,7 +814,7 @@ const MainReport = () => {
             const subTitle = `Date: ${payload.start_date ?? "-"} to ${payload.end_date ?? "-"}`;
 
             if (body.length === 0) {
-              downloadBlob(buildSimplePdf([`Report: ${title}`, subTitle, "No data"]), `${sanitizeFileName(reportType)}.pdf`);
+              toastNoData(String(json?.message ?? ""));
               return;
             }
 
@@ -877,17 +843,58 @@ const MainReport = () => {
         }
 
         // If the API actually returns JSON directly
+        if (data?.success === false) {
+          toastFromMessage(String(data?.message ?? "No data found."));
+          return;
+        }
+
+        const normalized = normalizeRows(data);
+        if (normalized.length === 0 || data?.totalCount === 0) {
+          toastNoData(String(data?.message ?? ""));
+          return;
+        }
+
         downloadTextFile(
           JSON.stringify(data, null, 2),
           `${sanitizeFileName(reportType)}.json`,
           "application/json;charset=utf-8"
         );
       },
+      onError: (error: any) => {
+        const respData = error?.response?.data;
+
+        if (typeof Blob !== "undefined" && respData instanceof Blob) {
+          const isJson = String(respData.type || "").toLowerCase().includes("application/json");
+          if (isJson) {
+            void respData
+              .text()
+              .then((t) => {
+                try {
+                  const json = JSON.parse(t);
+                  toastFromMessage(String(json?.message ?? t ?? "Download failed."));
+                } catch {
+                  toastFromMessage(String(t ?? "Download failed."));
+                }
+              })
+              .catch(() => {
+                toastFromMessage("Download failed.");
+              });
+            return;
+          }
+
+          toastFromMessage("Download failed.");
+          return;
+        }
+
+        const msg = String(error?.response?.data?.message ?? error?.message ?? "Download failed.");
+        toastFromMessage(msg);
+      },
     });
   };
 
   const onSelectReportType = (next: ReportType) => {
     setReportType(next);
+    setValidationError(null);
     setSearchText("");
     setSearchQuery("");
     setAccessLogGroupSearchText("");
@@ -1050,14 +1057,20 @@ const MainReport = () => {
                 <DateTimePicker
                   label="Start Date & Time"
                   value={startDate}
-                  onChange={(value) => setStartDate(value)}
+                  onChange={(value) => {
+                    setStartDate(value);
+                    setValidationError(null);
+                  }}
                   slotProps={{ textField: { size: "small", fullWidth: true } }}
                 />
               ) : (
                 <DatePicker
                   label="Start Date"
                   value={startDate}
-                  onChange={(value) => setStartDate(value)}
+                  onChange={(value) => {
+                    setStartDate(value);
+                    setValidationError(null);
+                  }}
                   slotProps={{ textField: { size: "small", fullWidth: true } }}
                 />
               )}
@@ -1067,7 +1080,10 @@ const MainReport = () => {
                   label="End Date & Time"
                   value={endDate}
                   minDateTime={startDate ?? undefined}
-                  onChange={(value) => setEndDate(value)}
+                  onChange={(value) => {
+                    setEndDate(value);
+                    setValidationError(null);
+                  }}
                   slotProps={{ textField: { size: "small", fullWidth: true } }}
                 />
               ) : (
@@ -1075,7 +1091,10 @@ const MainReport = () => {
                   label="End Date"
                   value={endDate}
                   minDate={startDate ?? undefined}
-                  onChange={(value) => setEndDate(value)}
+                  onChange={(value) => {
+                    setEndDate(value);
+                    setValidationError(null);
+                  }}
                   slotProps={{ textField: { size: "small", fullWidth: true } }}
                 />
               )}
@@ -1105,6 +1124,12 @@ const MainReport = () => {
                 {downloadMutation.isPending ? "Downloading..." : "Download"}
               </Button>
             </div>
+
+            {!!validationError && (
+              <Typography variant="body2" className="text-red-600!">
+                {validationError}
+              </Typography>
+            )}
 
             {/* {(apiNote || apiPreview) && (
               <div className="rounded border p-3">

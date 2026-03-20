@@ -70,9 +70,8 @@ export function useAccessListMutation() {
     mutationFn: async (payload: AccessListPayload) => {
       const format = payload.format ?? "json";
       const responseType = format === "json" ? "json" : "blob";
-      const res = await api.post(`/api/report/access-list`, payload, {
-        responseType: responseType as any,
-      });
+      const config: any = { responseType: responseType as any, skipErrorToast: true };
+      const res = await api.post(`/api/report/access-list`, payload, config);
       return res.data;
     },
     retry: false,
