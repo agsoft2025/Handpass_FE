@@ -13,10 +13,14 @@ export function useApiInterceptor() {
     const interceptorId = api.interceptors.response.use(
       (response) => response,
       (error) => {
+        const requestUrl = String((error.config as any)?.url ?? "");
+        const isAuthBootstrapCall = requestUrl.includes("/api/auth/me");
+        const skipErrorToast = Boolean((error.config as any)?.skipErrorToast);
+        const method = String((error.config as any)?.method ?? "").toLowerCase();
+        const isGetCall = method === "get";
+
         if (error.response) {
           const status = error.response.status;
-          const requestUrl = String(error.config?.url ?? "");
-          const isAuthBootstrapCall = requestUrl.includes("/api/auth/me");
 
           if ((status === 401 || status === 403) && isAuthBootstrapCall) {
             return Promise.reject(error);
@@ -26,13 +30,28 @@ export function useApiInterceptor() {
             void logout();
             enqueueSnackbar("Session expired. Please login again.", { variant: "error" });
             navigate("/login");
-          } else if (error.response.data?.message) {
-            enqueueSnackbar(error.response.data.message, { variant: "error" });
+          } else if (skipErrorToast || isGetCall) {
+            // Request will handle its own toast (e.g. parsing blob/json).
+          } else if (error.response.data?.message || error.response.data?.msg) {
+            enqueueSnackbar(error.response.data?.message ?? error.response.data?.msg, { variant: "error" });
+          } else if (typeof error.response.data === "string" && error.response.data.trim()) {
+            enqueueSnackbar(error.response.data.trim(), { variant: "error" });
           } else {
             enqueueSnackbar("Something went wrong", { variant: "error" });
           }
         } else {
-          enqueueSnackbar(error.message, { variant: "error" });
+          if (skipErrorToast) return Promise.reject(error);
+          if (isGetCall && !isAuthBootstrapCall) return Promise.reject(error);
+
+          const raw = String(error?.message ?? "").trim();
+          const msg =
+            isAuthBootstrapCall
+              ? "Unable to reach the server. Please try again."
+              : raw && raw.toLowerCase() !== "network error"
+                ? raw
+                : "Network error. Please try again.";
+
+          enqueueSnackbar(msg, { variant: "error" });
         }
 
         return Promise.reject(error);

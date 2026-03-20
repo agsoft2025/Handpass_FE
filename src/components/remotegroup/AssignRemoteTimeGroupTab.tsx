@@ -8,7 +8,9 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  IconButton,
   List,
+  ListItem,
   ListItemButton,
   ListItemText,
   Paper,
@@ -22,8 +24,7 @@ import { useDebounce } from "../../hooks/useDebounce";
 import { useUsers } from "../../service/useUsers";
 import {
   useCreateUserWiegand,
-  useDeleteUserWiegand,
-  useUpdateUserWiegand,
+  useDeleteAllUserWiegands,
   useUserWiegands,
   useWiegandGroups,
 } from "../../service/useWiegandGroup";
@@ -45,6 +46,8 @@ const initialAssignForm = {
   time_group_id: "",
 };
 
+type DraftAssignment = { group_id: string; time_group_id: string };
+
 type UserSearchResult = {
   user_id: string;
   label: string;
@@ -62,7 +65,6 @@ const AssignRemoteTimeGroupTab = () => {
   const [assignError, setAssignError] = useState("");
   const [assignSuccess, setAssignSuccess] = useState("");
   const [isAssignEditMode, setIsAssignEditMode] = useState(false);
-  const [editAssignmentIds, setEditAssignmentIds] = useState<string[]>([]);
   const [assignForm, setAssignForm] = useState(initialAssignForm);
   const [userSearchText, setUserSearchText] = useState("");
   const [showUserSuggestions, setShowUserSuggestions] = useState(false);
@@ -71,6 +73,8 @@ const AssignRemoteTimeGroupTab = () => {
   const [timeGroupSearchText, setTimeGroupSearchText] = useState("");
   const [showTimeGroupSuggestions, setShowTimeGroupSuggestions] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<null | { user_id: string; ids: string[] }>(null);
+  const [draftAssignments, setDraftAssignments] = useState<DraftAssignment[]>([]);
+  const [editingDraftIndex, setEditingDraftIndex] = useState<number | null>(null);
 
   const debouncedUserSearchText = useDebounce(userSearchText, 400);
 
@@ -78,7 +82,6 @@ const AssignRemoteTimeGroupTab = () => {
     data: assignmentsData,
     isLoading: isAssignmentsLoading,
     isFetching: isAssignmentsFetching,
-    isError: isAssignmentsError,
   } = useUserWiegands(true, assignPaginationModel.page + 1, assignPaginationModel.pageSize);
 
   const { data: usersData, isLoading: isUsersLoading } = useUsers(
@@ -92,8 +95,7 @@ const AssignRemoteTimeGroupTab = () => {
   const { data: timeGroupsData, isLoading: isTimeGroupsLoading } = useTimeGroups(0, true);
 
   const createUserWiegand = useCreateUserWiegand();
-  const updateUserWiegand = useUpdateUserWiegand();
-  const deleteUserWiegand = useDeleteUserWiegand();
+  const deleteAllUserWiegands = useDeleteAllUserWiegands();
 
   const assignmentsList = Array.isArray(assignmentsData)
     ? assignmentsData
@@ -126,7 +128,11 @@ const AssignRemoteTimeGroupTab = () => {
           .filter((item: any) => item?.group_id)
           .map((item: any) => [
             item.group_id,
-            { group_id: String(item.group_id), sn: String(item.sn || "") } satisfies GroupIdOption,
+            {
+              group_id: String(item.group_id),
+              sn: String(item.sn || ""),
+              device_name: String(item.device_name || item.deviceName || ""),
+            } satisfies GroupIdOption,
           ])
       ).values()
     ) as GroupIdOption[];
@@ -134,6 +140,10 @@ const AssignRemoteTimeGroupTab = () => {
 
   const groupIdToSn = useMemo(() => {
     return new Map(groupOptions.map((o) => [String(o.group_id), String(o.sn || "")]));
+  }, [groupOptions]);
+
+  const groupIdToDeviceName = useMemo(() => {
+    return new Map(groupOptions.map((o) => [String(o.group_id), String(o.device_name || "")]));
   }, [groupOptions]);
 
   const timeGroupOptions: TimeGroupOption[] = useMemo(() => {
@@ -180,10 +190,14 @@ const AssignRemoteTimeGroupTab = () => {
 
   const remoteGroupHelperText = useMemo(() => {
     const groupId = String(assignForm.remote_group_id || "").trim();
-    if (!groupId) return "Type group id or device SN to search, then pick from results.";
-    const sn = groupIdToSn.get(groupId);
-    return sn ? `Device SN: ${sn}` : "Device SN not found for this group.";
-  }, [assignForm.remote_group_id, groupIdToSn]);
+    if (!groupId) return "Type group id or device name to search, then pick from results.";
+    const deviceName = String(groupIdToDeviceName.get(groupId) || "").trim();
+    const sn = String(groupIdToSn.get(groupId) || "").trim();
+    if (deviceName && sn) return `Device: ${deviceName} (${sn})`;
+    if (deviceName) return `Device: ${deviceName}`;
+    if (sn) return `Device SN: ${sn}`;
+    return "Device not found for this group.";
+  }, [assignForm.remote_group_id, groupIdToDeviceName, groupIdToSn]);
 
   const timeGroupHelperText = useMemo(() => {
     const id = String(assignForm.time_group_id || "").trim();
@@ -195,7 +209,12 @@ const AssignRemoteTimeGroupTab = () => {
     const q = remoteGroupSearchText.trim().toLowerCase();
     if (!q) return groupOptions.slice(0, 8);
     return groupOptions
-      .filter((o) => String(o.group_id).toLowerCase().includes(q) || String(o.sn || "").toLowerCase().includes(q))
+      .filter(
+        (o) =>
+          String(o.group_id).toLowerCase().includes(q) ||
+          String(o.device_name || "").toLowerCase().includes(q) ||
+          String(o.sn || "").toLowerCase().includes(q)
+      )
       .slice(0, 8);
   }, [remoteGroupSearchText, groupOptions]);
 
@@ -214,7 +233,7 @@ const AssignRemoteTimeGroupTab = () => {
     { field: "user_id", headerName: "UserID", flex: 0.8 },
     { field: "remote_group_ids", headerName: "RemoteGroupID(s)", flex: 1.2 },
     { field: "time_group_ids", headerName: "TimeGroupID(s)", flex: 1.0 },
-    { field: "sns", headerName: "Access to Device(s)", flex: 1.8 },
+    { field: "device_names", headerName: "Access to Device(s)", flex: 1.8 },
     { field: "timestamp", headerName: "Timestamp", flex: 1 },
     {
       field: "actions",
@@ -233,7 +252,7 @@ const AssignRemoteTimeGroupTab = () => {
                 color="error"
                 size="small"
                 onClick={() => handleDeleteAssignRow(params.row)}
-                disabled={deleteUserWiegand.isPending}
+                disabled={deleteAllUserWiegands.isPending}
               >
                 <Trash />
               </Button>
@@ -253,18 +272,40 @@ const AssignRemoteTimeGroupTab = () => {
         remote_group_ids: Set<string>;
         time_group_ids: Set<string>;
         sns: Set<string>;
+        device_names: Set<string>;
+        assignment_pairs: Map<string, DraftAssignment>;
         latest_timestamp: number;
       }
     >();
 
+    const expanded: any[] = [];
     for (const item of assignmentsList) {
+      if (item && typeof item === "object" && Array.isArray((item as any).assignments)) {
+        const baseUserId = String((item as any)?.user_id ?? "").trim();
+        const baseSn = String((item as any)?.sn ?? "").trim();
+        const baseDeviceName = String((item as any)?.device_name ?? (item as any)?.deviceName ?? "").trim();
+        for (const a of (item as any).assignments) {
+          expanded.push({
+            ...(a ?? {}),
+            user_id: baseUserId,
+            sn: baseSn,
+            device_name: baseDeviceName || (a as any)?.device_name || (a as any)?.deviceName || "",
+          });
+        }
+      } else {
+        expanded.push(item);
+      }
+    }
+
+    for (const item of expanded) {
       const user_id = String(item?.user_id ?? "").trim();
       if (!user_id) continue;
 
-      const id = String(item?.id ?? "").trim();
+      const id = String(item?.id ?? item?.assignment_id ?? "").trim();
       const groupId = String(item?.group_id ?? item?.remote_group_id ?? "").trim();
       const timeGroupId = String(item?.time_group_id ?? "").trim();
       const sn = String(item?.sn ?? "").trim();
+      const deviceName = String(item?.device_name ?? item?.deviceName ?? "").trim();
       const ts = Number(item?.timestamp ?? 0) || 0;
 
       if (!byUser.has(user_id)) {
@@ -274,6 +315,8 @@ const AssignRemoteTimeGroupTab = () => {
           remote_group_ids: new Set<string>(),
           time_group_ids: new Set<string>(),
           sns: new Set<string>(),
+          device_names: new Set<string>(),
+          assignment_pairs: new Map<string, DraftAssignment>(),
           latest_timestamp: ts,
         });
       }
@@ -283,20 +326,31 @@ const AssignRemoteTimeGroupTab = () => {
       if (groupId) agg.remote_group_ids.add(groupId);
       if (timeGroupId) agg.time_group_ids.add(timeGroupId);
       if (sn) agg.sns.add(sn);
+      if (deviceName && sn) agg.device_names.add(`${deviceName} (${sn})`);
+      else if (deviceName) agg.device_names.add(deviceName);
+      else if (sn) agg.device_names.add(sn);
+      if (groupId && timeGroupId) {
+        const key = `${groupId}`.toLowerCase() + "::" + `${timeGroupId}`.toLowerCase();
+        if (!agg.assignment_pairs.has(key)) agg.assignment_pairs.set(key, { group_id: groupId, time_group_id: timeGroupId });
+      }
       if (ts > agg.latest_timestamp) agg.latest_timestamp = ts;
     }
 
     return Array.from(byUser.values()).map((agg) => {
       const remoteGroupText = Array.from(agg.remote_group_ids).sort().join(", ") || "-";
-    const timeGroupText = Array.from(agg.time_group_ids).sort().join(", ") || "-";
-    const snsText = Array.from(agg.sns).sort().join(", ") || "-";
-    return {
-      id: agg.user_id,
+      const timeGroupText = Array.from(agg.time_group_ids).sort().join(", ") || "-";
+      const snsText = Array.from(agg.sns).sort().join(", ") || "-";
+      const deviceNamesText =
+        Array.from(agg.device_names).sort().join(", ") || (snsText !== "-" ? snsText : "-");
+      return {
+        id: agg.user_id,
         user_id: agg.user_id,
         assignment_ids: agg.assignment_ids,
+        assignment_pairs: Array.from(agg.assignment_pairs.values()),
         remote_group_ids: remoteGroupText,
         time_group_ids: timeGroupText,
         sns: snsText,
+        device_names: deviceNamesText,
         timestamp: agg.latest_timestamp || "-",
       };
     });
@@ -315,33 +369,63 @@ const AssignRemoteTimeGroupTab = () => {
       });
   }, [usersData]);
 
-  const pickFirstFromCsv = (value: any) => {
-    const raw = String(value ?? "").trim();
-    if (!raw || raw === "-") return "";
-    return raw
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean)[0] || "";
+  const addOrUpdateDraftAssignment = () => {
+    const group_id = String(assignForm.remote_group_id || "").trim();
+    const time_group_id = String(assignForm.time_group_id || "").trim();
+
+    if (!group_id) return setAssignError("Please select Remote Group ID.");
+    if (!time_group_id) return setAssignError("Please enter Time Group ID.");
+
+    setDraftAssignments((prev) => {
+      const nextKey = `${group_id}`.toLowerCase() + "::" + `${time_group_id}`.toLowerCase();
+      const existsAtOtherIndex = prev.some((a, idx) => {
+        if (editingDraftIndex != null && idx === editingDraftIndex) return false;
+        const k = `${a.group_id}`.toLowerCase() + "::" + `${a.time_group_id}`.toLowerCase();
+        return k === nextKey;
+      });
+
+      if (existsAtOtherIndex) {
+        setAssignError("This Group ID and Time Group ID combination is already added.");
+        return prev;
+      }
+
+      if (editingDraftIndex != null) {
+        const copy = [...prev];
+        copy[editingDraftIndex] = { group_id, time_group_id };
+        return copy;
+      }
+
+      return [...prev, { group_id, time_group_id }];
+    });
+
+    setRemoteGroupSearchText("");
+    setShowRemoteGroupSuggestions(false);
+    setTimeGroupSearchText("");
+    setShowTimeGroupSuggestions(false);
+    setAssignForm((prev) => ({ ...prev, remote_group_id: "", time_group_id: "" }));
+    setEditingDraftIndex(null);
   };
 
   function handleEditAssignRow(row: any) {
     setAssignError("");
     setAssignSuccess("");
     setIsAssignEditMode(true);
-    setEditAssignmentIds(Array.isArray(row?.assignment_ids) ? row.assignment_ids.map((id: any) => String(id)) : []);
+    setDraftAssignments([]);
 
-    const firstRemoteGroupId = pickFirstFromCsv(row?.remote_group_ids);
-    const firstTimeGroupId = pickFirstFromCsv(row?.time_group_ids);
-    const snFromGroup = firstRemoteGroupId ? String(groupIdToSn.get(firstRemoteGroupId) || "") : "";
-    const snFromRow = pickFirstFromCsv(row?.sns);
-    const nextSn = snFromGroup || snFromRow;
+    const pairs: DraftAssignment[] = Array.isArray(row?.assignment_pairs) ? row.assignment_pairs : [];
+    setDraftAssignments(
+      pairs
+        .map((p: any) => ({ group_id: String(p?.group_id ?? "").trim(), time_group_id: String(p?.time_group_id ?? "").trim() }))
+        .filter((p: DraftAssignment) => p.group_id && p.time_group_id)
+    );
+    setEditingDraftIndex(null);
 
     setAssignForm((prev) => ({
       ...prev,
-      sn: nextSn,
       user_id: String(row.user_id ?? ""),
-      remote_group_id: firstRemoteGroupId,
-      time_group_id: firstTimeGroupId,
+      remote_group_id: "",
+      time_group_id: "",
+      sn: "",
     }));
     setUserSearchText(String(row.user_id ?? ""));
     setShowUserSuggestions(false);
@@ -349,9 +433,6 @@ const AssignRemoteTimeGroupTab = () => {
     setShowRemoteGroupSuggestions(false);
     setTimeGroupSearchText("");
     setShowTimeGroupSuggestions(false);
-
-    setRemoteGroupSearchText(firstRemoteGroupId);
-    setTimeGroupSearchText(firstTimeGroupId);
 
     setAssignOpen(true);
   }
@@ -373,7 +454,7 @@ const AssignRemoteTimeGroupTab = () => {
     setAssignError("");
     setAssignSuccess("");
     try {
-      await Promise.all(deleteTarget.ids.map((id) => deleteUserWiegand.mutateAsync(id)));
+      await deleteAllUserWiegands.mutateAsync({ user_id: deleteTarget.user_id });
       setAssignSuccess("Deleted user assignments successfully.");
       setDeleteTarget(null);
     } catch (err: any) {
@@ -388,38 +469,66 @@ const AssignRemoteTimeGroupTab = () => {
     setAssignSuccess("");
 
     if (!assignForm.user_id) return setAssignError("Please enter User ID.");
-    if (!assignForm.remote_group_id) return setAssignError("Please select Remote Group ID.");
-    if (!assignForm.time_group_id) return setAssignError("Please enter Time Group ID.");
-    if (!assignForm.sn) return setAssignError("Device SN not found for the selected Remote Group ID.");
 
-    const now = Date.now();
-    const basePayload = {
-      sn: assignForm.sn,
-      user_id: assignForm.user_id,
-      group_id: assignForm.remote_group_id,
-      time_group_id: assignForm.time_group_id,
-      timestamp: now,
-    };
+    const maybeGroup = String(assignForm.remote_group_id || "").trim();
+    const maybeTime = String(assignForm.time_group_id || "").trim();
+
+    const combined: DraftAssignment[] = [...draftAssignments];
+    if (editingDraftIndex == null && maybeGroup && maybeTime) combined.push({ group_id: maybeGroup, time_group_id: maybeTime });
+
+    const assignments = combined
+      .map((a) => ({
+        group_id: String(a.group_id || "").trim(),
+        time_group_id: String(a.time_group_id || "").trim(),
+      }))
+      .filter((a) => a.group_id && a.time_group_id);
+
+    if (assignments.length === 0) return setAssignError("Please add at least one assignment.");
+    if (editingDraftIndex != null) return setAssignError("Finish editing the assignment (click Update assignment) before saving.");
+
+    const seen = new Set<string>();
+    for (const a of assignments) {
+      const key = `${a.group_id}`.toLowerCase() + "::" + `${a.time_group_id}`.toLowerCase();
+      if (seen.has(key)) {
+        setAssignError("Duplicate assignment found (same Group ID and Time Group ID). Please remove the duplicate.");
+        return;
+      }
+      seen.add(key);
+    }
 
     try {
       if (isAssignEditMode) {
-        const targetId = editAssignmentIds[0];
-        if (!targetId) {
-          setAssignError("Invalid record selected for update.");
+        await deleteAllUserWiegands.mutateAsync({ user_id: assignForm.user_id });
+      }
+
+      const bySn = new Map<string, DraftAssignment[]>();
+      for (const a of assignments) {
+        const sn = String(groupIdToSn.get(a.group_id) || "").trim();
+        if (!sn) {
+          setAssignError(`Device SN not found for group ${a.group_id}.`);
           return;
         }
-        await updateUserWiegand.mutateAsync({ id: targetId, payload: basePayload as any });
-        if (editAssignmentIds.length > 1) {
-          await Promise.all(editAssignmentIds.slice(1).map((id) => deleteUserWiegand.mutateAsync(String(id))));
-        }
-        setAssignSuccess("Updated assigned remote/time group successfully.");
-      } else {
-        await createUserWiegand.mutateAsync({ ...basePayload, del_flag: false } as any);
-        setAssignSuccess("Assigned remote/time group successfully.");
+        if (!bySn.has(sn)) bySn.set(sn, []);
+        bySn.get(sn)!.push(a);
       }
+
+      await Promise.all(
+        Array.from(bySn.entries()).map(([sn, snAssignments]) =>
+          createUserWiegand.mutateAsync({
+            sn,
+            user_id: assignForm.user_id,
+            assignments: snAssignments,
+            del_flag: false,
+          } as any)
+        )
+      );
+
+      setAssignSuccess(isAssignEditMode ? "Updated assigned remote/time group successfully." : "Assigned remote/time group successfully.");
 
       setAssignOpen(false);
       setAssignForm(initialAssignForm);
+      setDraftAssignments([]);
+      setEditingDraftIndex(null);
       setUserSearchText("");
       setShowUserSuggestions(false);
       setRemoteGroupSearchText("");
@@ -427,7 +536,6 @@ const AssignRemoteTimeGroupTab = () => {
       setTimeGroupSearchText("");
       setShowTimeGroupSuggestions(false);
       setIsAssignEditMode(false);
-      setEditAssignmentIds([]);
     } catch (err: any) {
       setAssignError(
         err?.response?.data?.msg ||
@@ -448,8 +556,9 @@ const AssignRemoteTimeGroupTab = () => {
               setAssignError("");
               setAssignSuccess("");
               setIsAssignEditMode(false);
-              setEditAssignmentIds([]);
               setAssignForm({ ...initialAssignForm });
+              setDraftAssignments([]);
+              setEditingDraftIndex(null);
               setUserSearchText("");
               setShowUserSuggestions(false);
               setRemoteGroupSearchText("");
@@ -472,11 +581,6 @@ const AssignRemoteTimeGroupTab = () => {
       {assignError && !assignOpen && (
         <Alert severity="error" sx={{ mb: 2 }}>
           {assignError}
-        </Alert>
-      )}
-      {isAssignmentsError && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          Failed to fetch assignments.
         </Alert>
       )}
 
@@ -502,7 +606,7 @@ const AssignRemoteTimeGroupTab = () => {
       <Dialog
         open={assignOpen}
         onClose={() => {
-          if (createUserWiegand.isPending || updateUserWiegand.isPending) return;
+          if (createUserWiegand.isPending || deleteAllUserWiegands.isPending) return;
           setAssignOpen(false);
           setIsAssignEditMode(false);
         }}
@@ -582,7 +686,6 @@ const AssignRemoteTimeGroupTab = () => {
                 onKeyDown={(e) => {
                   if (e.key === "Escape") setShowRemoteGroupSuggestions(false);
                 }}
-                required
                 fullWidth
                 helperText={remoteGroupHelperText}
               />
@@ -615,7 +718,10 @@ const AssignRemoteTimeGroupTab = () => {
                             setShowRemoteGroupSuggestions(false);
                           }}
                         >
-                          <ListItemText primary={`${g.group_id} (SN: ${g.sn || "-"})`} secondary={g.group_id} />
+                          <ListItemText
+                            primary={`${g.group_id} (Device: ${g.device_name ? `${g.device_name} (${g.sn || "-"})` : g.sn || "-"})`}
+                            secondary={g.device_name || g.group_id}
+                          />
                         </ListItemButton>
                       ))}
                     </List>
@@ -636,7 +742,6 @@ const AssignRemoteTimeGroupTab = () => {
                 onKeyDown={(e) => {
                   if (e.key === "Escape") setShowTimeGroupSuggestions(false);
                 }}
-                required
                 fullWidth
                 helperText={timeGroupHelperText}
               />
@@ -672,6 +777,79 @@ const AssignRemoteTimeGroupTab = () => {
                   )}
                 </Paper>
               )}
+
+              <Button
+                variant="outlined"
+                onClick={addOrUpdateDraftAssignment}
+                disabled={createUserWiegand.isPending || deleteAllUserWiegands.isPending}
+              >
+                {editingDraftIndex == null ? "Add assignment" : "Update assignment"}
+              </Button>
+
+              {editingDraftIndex != null && (
+                <Button
+                  variant="text"
+                  onClick={() => {
+                    setEditingDraftIndex(null);
+                    setRemoteGroupSearchText("");
+                    setTimeGroupSearchText("");
+                    setAssignForm((prev) => ({ ...prev, remote_group_id: "", time_group_id: "" }));
+                  }}
+                  disabled={createUserWiegand.isPending || deleteAllUserWiegands.isPending}
+                >
+                  Cancel edit
+                </Button>
+              )}
+
+              {draftAssignments.length > 0 && (
+                <Paper variant="outlined" sx={{ p: 1 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                    Assignments
+                  </Typography>
+                  <List dense>
+                    {draftAssignments.map((a, idx) => (
+                      <ListItem
+                        key={`${a.group_id}:${a.time_group_id}:${idx}`}
+                        disablePadding
+                        secondaryAction={
+                          <IconButton
+                            edge="end"
+                            size="small"
+                            color="error"
+                            onClick={() => {
+                              setDraftAssignments((prev) => prev.filter((_, i) => i !== idx));
+                              if (editingDraftIndex === idx) setEditingDraftIndex(null);
+                            }}
+                          >
+                            <Trash size={16} />
+                          </IconButton>
+                        }
+                      >
+                        <ListItemButton
+                        key={`${a.group_id}:${a.time_group_id}:${idx}`}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          setAssignError("");
+                          setEditingDraftIndex(idx);
+                          setRemoteGroupSearchText(a.group_id);
+                          setTimeGroupSearchText(a.time_group_id);
+                          setAssignForm((prev) => ({
+                            ...prev,
+                            remote_group_id: a.group_id,
+                            time_group_id: a.time_group_id,
+                            sn: String(groupIdToSn.get(a.group_id) || prev.sn || ""),
+                          }));
+                          setShowRemoteGroupSuggestions(false);
+                          setShowTimeGroupSuggestions(false);
+                        }}
+                      >
+                        <ListItemText primary={`${a.group_id} → ${a.time_group_id}`} secondary="Click to edit" />
+                        </ListItemButton>
+                      </ListItem>
+                    ))}
+                  </List>
+                </Paper>
+              )}
             </Stack>
           </DialogContent>
           <DialogActions>
@@ -679,18 +857,17 @@ const AssignRemoteTimeGroupTab = () => {
               onClick={() => {
                 setAssignOpen(false);
                 setIsAssignEditMode(false);
-                setEditAssignmentIds([]);
               }}
-              disabled={createUserWiegand.isPending || updateUserWiegand.isPending}
+              disabled={createUserWiegand.isPending || deleteAllUserWiegands.isPending}
             >
               Cancel
             </Button>
             <Button
               type="submit"
               variant="contained"
-              disabled={createUserWiegand.isPending || updateUserWiegand.isPending}
+              disabled={createUserWiegand.isPending || deleteAllUserWiegands.isPending}
             >
-              {createUserWiegand.isPending || updateUserWiegand.isPending ? "Saving..." : "Save"}
+              {createUserWiegand.isPending || deleteAllUserWiegands.isPending ? "Saving..." : "Save"}
             </Button>
           </DialogActions>
         </form>
@@ -706,7 +883,7 @@ const AssignRemoteTimeGroupTab = () => {
         }
         onCancel={() => setDeleteTarget(null)}
         onConfirm={handleConfirmDelete}
-        loading={deleteUserWiegand.isPending}
+        loading={deleteAllUserWiegands.isPending}
       />
     </>
   );

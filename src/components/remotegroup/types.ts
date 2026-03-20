@@ -11,6 +11,7 @@ export type DeviceSnOption = {
 export type GroupIdOption = {
   group_id: string;
   sn: string;
+  device_name?: string;
 };
 
 export type TimeGroupOption = {
@@ -18,4 +19,3 @@ export type TimeGroupOption = {
   label: string;
   time_configs: any[];
 };
-

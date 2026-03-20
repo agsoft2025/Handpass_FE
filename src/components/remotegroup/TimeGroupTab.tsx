@@ -63,7 +63,26 @@ const TimeGroupTab = () => {
     isLoading: isTimeGroupsLoading,
     isFetching: isTimeGroupsFetching,
     isError: isTimeGroupsError,
+    error: timeGroupsError,
   } = useTimeGroups(0, true, timePaginationModel.page + 1, timePaginationModel.pageSize);
+
+  const timeGroupsErrorMessage = useMemo(() => {
+    if (!isTimeGroupsError) return "";
+    const err: any = timeGroupsError;
+    const msg =
+      err?.response?.data?.msg ||
+      err?.response?.data?.message ||
+      (typeof err?.response?.data === "string" ? err.response.data : "") ||
+      err?.message ||
+      "";
+
+    const normalized = String(msg || "").trim();
+    if (!normalized) return "Unable to fetch time groups.";
+    if (normalized.toLowerCase() === "network error") {
+      return "Unable to reach the server. Please check your network / backend URL and try again.";
+    }
+    return normalized;
+  }, [isTimeGroupsError, timeGroupsError]);
 
   const timeList = Array.isArray(timeGroupsData)
     ? timeGroupsData
@@ -175,8 +194,9 @@ const TimeGroupTab = () => {
       headerName: "Action",
       flex: 0.6,
       sortable: false,
+      cellClassName: "hp-action-cell",
       renderCell: (params) => (
-        <Stack direction="row" spacing={0.5}>
+        <Stack direction="row" spacing={0.5} alignItems="center" sx={{ height: "100%" }}>
           {!isOperator && (
             <>
               <IconButton size="small" onClick={() => handleEditTimeRow(params.row)}>
@@ -284,7 +304,7 @@ const TimeGroupTab = () => {
       )}
       {isTimeGroupsError && (
         <Alert severity="error" sx={{ mb: 2 }}>
-          Failed to fetch time groups.
+          {timeGroupsErrorMessage}
         </Alert>
       )}
 
@@ -303,6 +323,7 @@ const TimeGroupTab = () => {
           disableColumnSelector
           sx={{
             "& .MuiDataGrid-cell:focus": { outline: "none" },
+            "& .hp-action-cell": { display: "flex", alignItems: "center" },
           }}
         />
       </Box>

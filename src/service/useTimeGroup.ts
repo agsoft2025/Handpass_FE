@@ -46,7 +46,7 @@ export function useCreateTimeGroup() {
 
   return useMutation({
     mutationFn: async (payload: CreateTimeGroupPayload) => {
-      const res = await api.post("/v1/api/time_groups", payload);
+      const res = await api.post("/v1/api/time_groups", payload, { skipErrorToast: true } as any);
       return res.data;
     },
     onSuccess: () => {
@@ -60,7 +60,7 @@ export function useUpdateTimeGroup() {
 
   return useMutation({
     mutationFn: async ({ id, payload }: { id: string; payload: CreateTimeGroupPayload }) => {
-      const res = await api.put(`/v1/api/time_groups/${id}`, payload);
+      const res = await api.put(`/v1/api/time_groups/${id}`, payload, { skipErrorToast: true } as any);
       return res.data;
     },
     onSuccess: () => {
@@ -74,7 +74,7 @@ export function useSoftDeleteTimeGroup() {
 
   return useMutation({
     mutationFn: async (payload: { time_group_id: string }) => {
-      const res = await api.delete(`/v1/api/time_groups/delete`, { data: payload });
+      const res = await api.delete(`/v1/api/time_groups/delete`, { data: payload, skipErrorToast: true } as any);
       return res.data;
     },
     onSuccess: () => {

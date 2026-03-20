@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { api } from "../lib/api";
 
 interface IAuthContext {
@@ -20,6 +20,7 @@ export const AuthProvider = ({ children }: IAuthProvider) => {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [isCheckingAuth, setIsCheckingAuth] = useState(true);
     const [user, setUser] = useState<unknown>(null);
+    const hasBootstrappedRef = useRef(false);
 
     const login = (loggedInUser?: unknown) => {
         setIsAuthenticated(true);
@@ -54,6 +55,8 @@ export const AuthProvider = ({ children }: IAuthProvider) => {
     }, []);
 
     useEffect(() => {
+        if (hasBootstrappedRef.current) return;
+        hasBootstrappedRef.current = true;
         refreshAuth();
     }, [refreshAuth]);
 

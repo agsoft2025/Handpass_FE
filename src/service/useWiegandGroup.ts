@@ -9,10 +9,14 @@ export interface CreateWiegandGroupPayload {
 export interface CreateUserWiegandPayload {
   sn: string;
   user_id: string;
-  group_id: string;
-  time_group_id: string;
-  timestamp: number;
-  del_flag: boolean;
+  group_id?: string;
+  time_group_id?: string;
+  assignments?: Array<{
+    group_id: string;
+    time_group_id: string;
+  }>;
+  timestamp?: number;
+  del_flag?: boolean;
 }
 
 export interface UpdateUserWiegandPayload {
@@ -42,12 +46,13 @@ export function useWiegandGroups(delFlag = 0, enabled = true, page?: number, lim
   } as any);
 }
 
-export function useUserWiegands(enabled = true, page?: number, limit?: number) {
+export function useUserWiegands(groupByUser = false, page?: number, limit?: number, enabled = true) {
   return useQuery<any>({
-    queryKey: ["userWiegands", page ?? "all", limit ?? "all"],
+    queryKey: ["userWiegands", groupByUser ? "groupByUser" : "flat", page ?? "all", limit ?? "all"],
     queryFn: async () => {
       const params = new URLSearchParams();
       params.set("del_flag", "false");
+      if (groupByUser) params.set("group_by_user", "true");
       if (typeof page === "number" && typeof limit === "number") {
         params.set("page", String(page));
         params.set("limit", String(limit));
@@ -66,7 +71,7 @@ export function useCreateUserWiegand() {
 
   return useMutation({
     mutationFn: async (payload: CreateUserWiegandPayload) => {
-      const res = await api.post("/v1/api/user_wiegands", payload);
+      const res = await api.post("/v1/api/user_wiegands", payload, { skipErrorToast: true } as any);
       return res.data;
     },
     onSuccess: () => {
@@ -80,7 +85,7 @@ export function useSoftDeleteWiegandGroup() {
 
   return useMutation({
     mutationFn: async (payload: { group_id: string; sn: string }) => {
-      const res = await api.delete(`/v1/api/wiegand_groups/delete`, { data: payload });
+      const res = await api.delete(`/v1/api/wiegand_groups/delete`, { data: payload, skipErrorToast: true } as any);
       return res.data;
     },
     onSuccess: () => {
@@ -93,8 +98,22 @@ export function useDeleteUserWiegand() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (id: string) => {
-      const res = await api.delete(`/v1/api/user_wiegands/${id}`);
+    mutationFn: async (payload: { user_id: string; id: string }) => {
+      const res = await api.delete(`/v1/api/user_wiegands/assignment`, { data: payload, skipErrorToast: true } as any);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["userWiegands"], exact: false });
+    },
+  });
+}
+
+export function useDeleteAllUserWiegands() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (payload: { user_id: string }) => {
+      const res = await api.delete(`/v1/api/user_wiegands/all`, { data: payload, skipErrorToast: true } as any);
       return res.data;
     },
     onSuccess: () => {
@@ -108,7 +127,7 @@ export function useUpdateUserWiegand() {
 
   return useMutation({
     mutationFn: async ({ id, payload }: { id: string; payload: UpdateUserWiegandPayload }) => {
-      const res = await api.put(`/v1/api/user_wiegands/${id}`, payload);
+      const res = await api.put(`/v1/api/user_wiegands/${id}`, payload, { skipErrorToast: true } as any);
       return res.data;
     },
     onSuccess: () => {
@@ -122,7 +141,7 @@ export function useCreateWiegandGroup() {
 
   return useMutation({
     mutationFn: async (payload: CreateWiegandGroupPayload) => {
-      const res = await api.post("/v1/api/wiegand_groups", payload);
+      const res = await api.post("/v1/api/wiegand_groups", payload, { skipErrorToast: true } as any);
       return res.data;
     },
     onSuccess: () => {
@@ -142,7 +161,7 @@ export function useUpdateWiegandGroup() {
       id: string;
       payload: CreateWiegandGroupPayload;
     }) => {
-      const res = await api.put(`/v1/api/wiegand_groups/${id}`, payload);
+      const res = await api.put(`/v1/api/wiegand_groups/${id}`, payload, { skipErrorToast: true } as any);
       return res.data;
     },
     onSuccess: () => {
